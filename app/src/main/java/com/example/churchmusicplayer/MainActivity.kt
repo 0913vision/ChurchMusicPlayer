@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.collectAsState
 import com.example.churchmusicplayer.data.ConnectionStatus
 import com.example.churchmusicplayer.ui.components.Fader
+import com.example.churchmusicplayer.ui.components.SimpleFader
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,21 +76,40 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         }
 
         // Fader for volume control
+//        Fader(
+//            currentVolume = volume.toFloat(),
+//            onVolumeChange = { newVolume ->
+//                val roundedVolume = newVolume.roundToInt().coerceIn(0, 100)
+//                if (roundedVolume != volume) {
+//                    viewModel.changeVolume(roundedVolume)
+//                }
+//            },
+//            modifier = Modifier.align(Alignment.CenterHorizontally)
+//        )
         Fader(
-            currentVolume = volume.toFloat(),
-            onVolumeChange = { viewModel.changeVolume(it.toInt()) },
+            volume = volume,
+            onVolumeChange = { newVolume -> viewModel.changeVolume(newVolume) },
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
+//        SimpleFader(
+//            volume = volume,
+//            onVolumeChange = { newVolume ->
+//                viewModel.changeVolume(newVolume.toInt())
+//            },
+//            modifier = Modifier.align(Alignment.CenterHorizontally)
+//        )
 
         // Playback controls
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Button(onClick = { viewModel.reconnect() }) {
+            Button(onClick = {
+                viewModel.reconnect()
+            }) {
                 Text("Refresh")
             }
-            Text("Volume: $volume")
+//            Text("Volume: $volume")
             Button(onClick = { viewModel.changeState() }) {
                 Text(if (state == 1) "Pause" else "Play")
             }
@@ -104,6 +125,7 @@ fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit) 
             .background(
                 when (status) {
                     is ConnectionStatus.Connected -> Color(0xFF4CAF50)  // Green
+                    is ConnectionStatus.GracePeriod -> Color(0xFF4CAF50)  // Green
                     is ConnectionStatus.Connecting -> Color(0xFFFFC107)  // Yellow
                     is ConnectionStatus.Disconnected -> Color(0xFFF44336)  // Red
                     is ConnectionStatus.Error -> Color(0xFFF44336)  // Red
@@ -116,7 +138,8 @@ fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit) 
     ) {
         Text(
             text = when (status) {
-                is ConnectionStatus.Connected -> "연결됨"
+                is ConnectionStatus.Connected -> "연결 상태: 매우 좋음"
+                is ConnectionStatus.GracePeriod -> "연결 상태: 보통"
                 is ConnectionStatus.Connecting -> "연결 중..."
                 is ConnectionStatus.Disconnected -> "연결 끊김"
                 is ConnectionStatus.Error -> "오류: ${status.message}"
@@ -124,7 +147,7 @@ fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit) 
             },
             color = Color.White
         )
-        if (status !is ConnectionStatus.Connected && status !is ConnectionStatus.Connecting) {
+        if (status !is ConnectionStatus.Connected && status !is ConnectionStatus.Connecting && status !is ConnectionStatus.GracePeriod) {
             Button(onClick = onReconnectClick) {
                 Text("재연결")
             }

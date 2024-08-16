@@ -41,7 +41,14 @@ class MainViewModel : ViewModel() {
         }
 
         socketManager.on("volumeChanged") { args ->
-            args[0]?.let { _volume.value = it as Int }
+            try {
+                args[0]?.let {
+                    val newVolume = (it as? Double)?.toInt() ?: (it as? Int) ?: return@let
+                    _volume.value = newVolume.coerceIn(0, 100)
+                }
+            } catch (e: Exception) {
+                println(e)
+            }
         }
 
         socketManager.on("muteChanged") { args ->
@@ -73,12 +80,9 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun updateServerUrl(newUrl: String) {
-        socketManager.updateServerUrl(newUrl)
-    }
-
     fun reconnect() {
         socketManager.reconnect()
+        setupSocketListeners()
     }
 
     override fun onCleared() {
