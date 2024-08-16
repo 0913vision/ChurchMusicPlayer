@@ -11,7 +11,7 @@ class SocketManager {
     private val _connectionStatus = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus
 
-    private var serverUrl = "http://default_server_url:8080"
+    private var serverUrl = "http://192.168.0.4:3000/"
 
     fun initSocket() {
         try {
