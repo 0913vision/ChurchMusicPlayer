@@ -18,7 +18,7 @@ class SocketManager {
     private val _connectionStatus = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus
 
-    private var serverUrl = "http://192.168.0.3:3000/"
+    private var serverUrl = "http://192.168.0.4:3000/"
 
     fun initSocket() {
         if (isInitialized) return
@@ -33,7 +33,6 @@ class SocketManager {
             socket = IO.socket(serverUrl, options)
 
             socket.on("ping") {
-                println("get ping")
                 lastPingTime = System.currentTimeMillis()
             }
 

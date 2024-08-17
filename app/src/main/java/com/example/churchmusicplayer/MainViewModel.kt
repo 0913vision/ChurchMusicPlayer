@@ -1,8 +1,11 @@
 package com.example.churchmusicplayer
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.churchmusicplayer.data.SocketManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -21,6 +24,17 @@ class MainViewModel : ViewModel() {
 
     private val _currentSong = MutableStateFlow("slow")
     val currentSong: StateFlow<String> = _currentSong
+
+    private val _processing = MutableStateFlow(false)
+    val processing: StateFlow<Boolean> = _processing
+
+    private fun setProcessing() {
+        viewModelScope.launch {
+            _processing.value = true
+            delay(1500)
+            _processing.value = false
+        }
+    }
 
     val connectionStatus = socketManager.connectionStatus
 
@@ -65,6 +79,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun changeState() {
+        setProcessing()
         val newState = if (_state.value == 0) 1 else 0
         socketManager.emit("changeState", newState)
     }
@@ -75,6 +90,9 @@ class MainViewModel : ViewModel() {
     }
 
     fun changeSong(newSong: String) {
+        if (_state.value != 0) {
+            setProcessing()
+        }
         if (_currentSong.value != newSong) {
             socketManager.emit("changeSong", _currentSong.value, newSong)
         }

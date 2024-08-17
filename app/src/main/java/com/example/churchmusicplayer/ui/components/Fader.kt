@@ -11,7 +11,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
@@ -30,9 +33,9 @@ fun Fader(
 
     Box(
         modifier = modifier
-            .width(60.dp)
-            .height(300.dp)
-            .background(Color.Black)
+            .fillMaxSize()
+            .padding(vertical=20.dp)
+//            .background(Color.Black)
             .onSizeChanged { size ->
                 faderHeight = size.height
             }
@@ -40,7 +43,7 @@ fun Fader(
         // Fader track
         Box(
             modifier = Modifier
-                .width(4.dp)
+                .width(15.dp)
                 .fillMaxHeight()
                 .align(Alignment.Center)
                 .background(Color.DarkGray)
@@ -55,13 +58,23 @@ fun Fader(
 
         Card(
             modifier = Modifier
-                .width(50.dp)
-                .height(40.dp)
+                .width(90.dp)
+//                .fillMaxWidth()
+//                .padding(horizontal=30.dp)
+                .height(60.dp)
+//                .shadow(1.dp)
                 .align(Alignment.TopCenter)
                 .offset { IntOffset(0, thumbOffset.roundToInt()) }
                 .onSizeChanged { size ->
                     thumbHeight = size.height
                 }
+                .shadow(
+                    elevation = 16.dp,
+                    shape = RoundedCornerShape(10.dp),
+                    clip = false,
+                    ambientColor = Color.Black,
+                    spotColor = Color.Black
+                )
                 .draggable(
                     orientation = Orientation.Vertical,
                     state = rememberDraggableState { delta ->
@@ -72,7 +85,7 @@ fun Fader(
                     onDragStarted = { isDragging = true },
                     onDragStopped = { isDragging = false }
                 ),
-            shape = RoundedCornerShape(4.dp),
+            shape = RoundedCornerShape(10.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {}
