@@ -1,117 +1,149 @@
 package com.example.churchmusicplayer
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.churchmusicplayer.data.SocketManager
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import com.example.churchmusicplayer.data.*
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 class MainViewModel : ViewModel() {
     private val socketManager = SocketManager()
 
-    private val _volume = MutableStateFlow(50)
-    val volume: StateFlow<Int> = _volume
+    val connectionStatus = socketManager.connectionStatus
+    val rejection = socketManager.rejection
 
-    private val _state = MutableStateFlow(0)
-    val state: StateFlow<Int> = _state
+    private val state = socketManager.state
+    private val ready = socketManager.ready
 
-    private val _mute = MutableStateFlow(0)
-    val mute: StateFlow<Int> = _mute
+    val volume: StateFlow<Int> = state.mapState { it.optInt(Protocol.Attribute.VOLUME, 0) }
+    val isPlaying: StateFlow<Boolean> =
+        state.mapState { it.optString(Protocol.Attribute.PLAYBACK) == Protocol.Playback.PLAYING }
+    val isMuted: StateFlow<Boolean> =
+        state.mapState { it.optString(Protocol.Attribute.MUTE) == Protocol.Mute.MUTED }
+    val currentSong: StateFlow<String> = state.mapState { it.optString(Protocol.Attribute.SONG) }
 
-    private val _currentSong = MutableStateFlow("slow")
-    val currentSong: StateFlow<String> = _currentSong
+    /** The device is mid-transition, so audio writes will be refused. */
+    val processing: StateFlow<Boolean> = state.mapState { it.optBoolean(Protocol.Attribute.AUDIO_LOCK) }
 
-    private val _processing = MutableStateFlow(false)
-    val processing: StateFlow<Boolean> = _processing
+    /** An admin has closed the gate; nothing this app sends will be accepted. */
+    val adminLocked: StateFlow<Boolean> = state.mapState { it.optBoolean(Protocol.Attribute.ADMIN_LOCK) }
 
-    private fun setProcessing(value: Boolean) {
-        viewModelScope.launch {
-            _processing.value = value
+    /** What the server is running, if anything — the reason a gate is closed. */
+    val flow: StateFlow<FlowStatus> = state.mapState { readFlow(it) }
+
+    /**
+     * The app's two buttons, resolved against the server's catalogue. A song the
+     * server does not offer stays on screen but cannot be chosen, because
+     * silently dropping a button would leave the operator wondering where it went.
+     */
+    val songChoices: StateFlow<List<SongChoice>> = ready.mapState { info ->
+        Songs.OFFERED.map { id ->
+            val song = info?.songs?.firstOrNull { it.id == id }
+            SongChoice(id = id, title = song?.title ?: "사용할 수 없음", available = song != null)
         }
     }
 
-    val connectionStatus = socketManager.connectionStatus
+    /** With no song to play, the transport has nothing to do. */
+    val canPlay: StateFlow<Boolean> = songChoices.mapState { choices -> choices.any { it.available } }
+
+    /**
+     * Whether the selected song is what is actually sounding.
+     *
+     * A flow puts its own track on the deck without touching which song is
+     * selected, so during one the selection describes what will come back
+     * afterwards — not what is playing now. Ticking it then would name the
+     * wrong music.
+     */
+    val songIsLive: StateFlow<Boolean> = flow.mapState { it !is FlowStatus.Playing }
+
+    /**
+     * Who to call when something is wrong, as the server names them. Unknown
+     * until the handshake lands — including on the very first connection
+     * failure, which is exactly when it would have been most useful.
+     */
+    val helpline: StateFlow<Helpline> = ready.mapState { it?.contact ?: Helpline.Unknown }
+
+    /** Whether the server implements the console commands this screen offers. */
+    val consoleAvailable: StateFlow<Boolean> =
+        ready.mapState { it?.supportsCommand(Protocol.Command.ENABLE_CONSOLE_INPUT) == true }
 
     init {
-        initSocket()
-    }
-
-    private fun initSocket() {
-        viewModelScope.launch {
-            socketManager.initSocket()
-            setupSocketListeners()
-        }
-    }
-
-    private fun setupSocketListeners() {
-        socketManager.on("stateChanged") { args ->
-            args[0]?.let { _state.value = it as Int }
-        }
-
-        socketManager.on("volumeChanged") { args ->
-            try {
-                args[0]?.let {
-                    val newVolume = (it as? Double)?.toInt() ?: (it as? Int) ?: return@let
-                    _volume.value = newVolume.coerceIn(0, 100)
-                }
-            } catch (e: Exception) {
-                println(e)
-            }
-        }
-
-        socketManager.on("muteChanged") { args ->
-            args[0]?.let { _mute.value = it as Int }
-        }
-
-        socketManager.on("songChanged") { args ->
-            args[0]?.let { _currentSong.value = it as String }
-        }
-
-        socketManager.on("lockChanged") { args ->
-            args[0]?.let { setProcessing(it as Boolean) }
-        }
+        viewModelScope.launch { socketManager.initSocket() }
     }
 
     fun changeVolume(newVolume: Int) {
-        socketManager.emit("changeVolume", newVolume)
+        socketManager.write(Protocol.Attribute.VOLUME, newVolume)
     }
 
-    fun changeState() {
-        setProcessing(false)
-        val newState = if (_state.value == 0) 1 else 0
-        socketManager.emit("changeState", newState)
+    fun togglePlayback() {
+        val next = if (isPlaying.value) Protocol.Playback.PAUSED else Protocol.Playback.PLAYING
+        socketManager.write(Protocol.Attribute.PLAYBACK, next)
     }
 
-    fun changeMute() {
-        val newMute = if (_mute.value == 0) 1 else 0
-        socketManager.emit("changeMute", newMute)
+    fun toggleMute() {
+        val next = if (isMuted.value) Protocol.Mute.UNMUTED else Protocol.Mute.MUTED
+        socketManager.write(Protocol.Attribute.MUTE, next)
     }
 
-    fun changeSong(newSong: String) {
-        setProcessing(false)
-        if (_currentSong.value != newSong) {
-            socketManager.emit("changeSong", _currentSong.value, newSong)
-        }
+    fun changeSong(songId: String) {
+        if (songId == currentSong.value) return
+        socketManager.write(Protocol.Attribute.SONG, songId)
     }
 
-    fun toggleMicrophone() {
-        socketManager.emit("micOn")
-    }
-    fun toggleConsole() {
-        socketManager.emit("auxOn")
+    fun enableMicrophone() = enableConsoleInput(Protocol.ConsoleInput.MIC)
+
+    fun enableAux() = enableConsoleInput(Protocol.ConsoleInput.AUX)
+
+    private fun enableConsoleInput(input: String) {
+        socketManager.invoke(
+            Protocol.Command.ENABLE_CONSOLE_INPUT,
+            JSONObject().put("input", input),
+        )
     }
 
-    fun reconnect() {
-        socketManager.reconnect()
-        setupSocketListeners()
-    }
+    fun dismissRejection() = socketManager.clearRejection()
+
+    fun reconnect() = socketManager.reconnect()
 
     override fun onCleared() {
         super.onCleared()
         socketManager.disconnect()
+    }
+
+    private fun <T, R> StateFlow<T>.mapState(transform: (T) -> R): StateFlow<R> =
+        map(transform).stateIn(viewModelScope, SharingStarted.Eagerly, transform(value))
+}
+
+/**
+ * Reads the flow attribute.
+ *
+ * A phase this build does not know means the server is newer than the app, so
+ * it becomes Unknown and is shown as such. Treating it as idle would tell the
+ * operator nothing is running while a service is under way.
+ */
+private fun readFlow(state: JSONObject): FlowStatus {
+    val flow = state.optJSONObject(Protocol.Attribute.FLOW) ?: return FlowStatus.Idle
+    return when (flow.optString("phase")) {
+        Protocol.FlowPhase.IDLE -> FlowStatus.Idle
+        Protocol.FlowPhase.WAITING -> FlowStatus.Waiting(
+            name = flow.optString("name"),
+            startsAt = flow.optString("startsAt"),
+        )
+        Protocol.FlowPhase.PLAYING -> {
+            val track = flow.optJSONObject("track")
+            FlowStatus.Playing(
+                name = flow.optString("name"),
+                trackTitle = track?.optString("title").orEmpty(),
+                index = track?.optInt("index") ?: 0,
+                total = track?.optInt("total") ?: 0,
+                endsAt = flow.optString("endsAt"),
+            )
+        }
+        Protocol.FlowPhase.HOLDING -> FlowStatus.Holding(
+            name = flow.optString("name"),
+            unlockAt = flow.optString("unlockAt"),
+        )
+        else -> FlowStatus.Unknown
     }
 }

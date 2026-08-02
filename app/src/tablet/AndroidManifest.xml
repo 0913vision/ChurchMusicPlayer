@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Kiosk, and only here. The tablet is mounted in one place and should not be
+  navigated away from; the phone build is an ordinary app. lockTaskMode pins
+  the activity when the device owner has whitelisted it, and MainActivity
+  calls startLockTask() on this flavor.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <activity
+            android:name=".MainActivity"
+            android:lockTaskMode="if_whitelisted" />
+    </application>
+
+</manifest>

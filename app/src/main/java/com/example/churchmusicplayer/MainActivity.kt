@@ -1,62 +1,44 @@
 package com.example.churchmusicplayer
 
-import android.app.admin.DeviceAdminReceiver
-import android.content.ComponentName
-import android.content.Context
-import android.os.Build
-import androidx.lifecycle.viewmodel.compose.viewModel
 import android.os.Bundle
-import android.os.Process
-import android.view.View
-import android.view.WindowInsetsController
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
-import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.sp
-import com.example.churchmusicplayer.data.ConnectionStatus
-import com.example.churchmusicplayer.ui.components.Fader
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.churchmusicplayer.data.ConnectionStatus
+import com.example.churchmusicplayer.data.Rejection
+import com.example.churchmusicplayer.data.SongChoice
+import com.example.churchmusicplayer.ui.Layout
+import com.example.churchmusicplayer.ui.components.Fader
+import com.example.churchmusicplayer.ui.components.StatusOverlay
+import com.example.churchmusicplayer.ui.components.disconnectedNotice
+import com.example.churchmusicplayer.ui.components.lockedNotice
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.StateFlow
+
+private const val REJECTION_VISIBLE_MS = 4_000L
+private const val BUTTON_COOLDOWN_MS = 1_000L
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-//        enableEdgeToEdge()
-
-//        @Suppress("DEPRECATION")
-//        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
-//        actionBar?.hide()
-//
-//        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
-//                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-//                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
-
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
@@ -68,25 +50,35 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-//        startLockTask()
+        // Kiosk is the tablet build's job: it is mounted in one place and must
+        // not be navigated away from. The phone build is an ordinary app.
+        if (BuildConfig.KIOSK) {
+            startLockTask()
+        }
     }
 }
 
 @Composable
 fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val volume by viewModel.volume.collectAsState()
-    val state by viewModel.state.collectAsState()
+    val isPlaying by viewModel.isPlaying.collectAsState()
     val currentSong by viewModel.currentSong.collectAsState()
+    val songChoices by viewModel.songChoices.collectAsState()
+    val songIsLive by viewModel.songIsLive.collectAsState()
+    val canPlay by viewModel.canPlay.collectAsState()
     val connectionStatus by viewModel.connectionStatus.collectAsState()
     val processing by viewModel.processing.collectAsState()
+    val adminLocked by viewModel.adminLocked.collectAsState()
+    val flow by viewModel.flow.collectAsState()
+    val helpline by viewModel.helpline.collectAsState()
+    val rejection by viewModel.rejection.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF1A1718))
     ) {
-        // Connection Status Bar
-        Box (
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .shadow(8.dp)
@@ -98,125 +90,126 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             )
         }
 
-        // Main Content
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-//                .fillMaxHeight()
-//                .padding(10.dp)
         ) {
             MainContent(
                 volume = volume,
-                state = state,
+                isPlaying = isPlaying,
                 currentSong = currentSong,
+                songChoices = songChoices,
+                songIsLive = songIsLive,
+                canPlay = canPlay,
                 onVolumeChange = { viewModel.changeVolume(it) },
-                onStateChange = { viewModel.changeState() },
+                onPlaybackToggle = { viewModel.togglePlayback() },
                 onSongChange = { viewModel.changeSong(it) },
                 processing = processing,
-                toggleMicrophone = { viewModel.toggleMicrophone() },
-                toggleConsole =  { viewModel.toggleConsole() },
+                onMicrophone = { viewModel.enableMicrophone() },
+                onAux = { viewModel.enableAux() },
             )
-            if (connectionStatus !is ConnectionStatus.Connected && connectionStatus !is ConnectionStatus.GracePeriod) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(Color.Black.copy(alpha = 0.8f))
-                        .pointerInput(Unit) { // 터치 이벤트 차단
-                            detectTapGestures {}
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        modifier = Modifier.matchParentSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text (
-                            "연결이 끊겼습니다.",
-                            fontSize = 40.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = -1.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(20.dp))
-                        Text (
-                            "[다시 연결하기]를 눌러서\n재연결을 시도하세요.",
-                            fontSize = 25.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.Normal,
-                            letterSpacing = -1.sp,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 28.sp,
-                        )
-                    }
 
-                }
+            // Two things take the whole screen away, and for the same reason:
+            // nothing the operator does here would be accepted. Losing the
+            // connection is one; an admin closing the gate is the other, and
+            // before v1 the app could not tell that second one apart from
+            // everything simply not working.
+            val disconnected = connectionStatus !is ConnectionStatus.Connected &&
+                connectionStatus !is ConnectionStatus.GracePeriod
+            when {
+                disconnected -> StatusOverlay(disconnectedNotice(), helpline)
+                adminLocked -> StatusOverlay(lockedNotice(flow), helpline)
             }
         }
 
-        // Footer
-        Footer(
-            onRefreshClick = { viewModel.reconnect() }
-        )
+        Footer()
+    }
+
+    RejectionNotice(rejection = rejection, onDismiss = { viewModel.dismissRejection() })
+}
+
+/**
+ * A refused write, explained and then let go.
+ *
+ * Before v1 a refusal was indistinguishable from the app doing nothing, so the
+ * operator had no way to tell "the device is busy" from "this is broken".
+ */
+@Composable
+fun RejectionNotice(rejection: Rejection?, onDismiss: () -> Unit) {
+    if (rejection == null) return
+
+    LaunchedEffect(rejection.at) {
+        delay(REJECTION_VISIBLE_MS)
+        onDismiss()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 60.dp),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Surface(
+            color = Color(0xFF3B0404),
+            shape = RoundedCornerShape(10.dp),
+        ) {
+            Text(
+                rejection.reason.message,
+                color = Color.White,
+                fontSize = Layout.reconnectText,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
     }
 }
 
 @Composable
 fun MainContent(
     volume: Int,
-    state: Int,
+    isPlaying: Boolean,
     currentSong: String,
+    songChoices: List<SongChoice>,
+    songIsLive: Boolean,
+    canPlay: Boolean,
     onVolumeChange: (Int) -> Unit,
-    onStateChange: () -> Unit,
+    onPlaybackToggle: () -> Unit,
     onSongChange: (String) -> Unit,
     processing: Boolean,
-    toggleMicrophone: () -> Unit,
-    toggleConsole: () -> Unit
+    onMicrophone: () -> Unit,
+    onAux: () -> Unit,
 ) {
     Column(
-        modifier = Modifier
-//            .fillMaxSize()
-            .padding(horizontal = 30.dp, vertical = 50.dp),
+        modifier = Modifier.padding(
+            horizontal = Layout.screenPaddingH,
+            vertical = Layout.screenPaddingV,
+        ),
     ) {
         Row(
             modifier = Modifier
-//                .weight(0.75f)
-//                .wrapContentHeight()
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
-//                .border(
-//                    width = 0.8.dp,
-//                    color = Color.Yellow.copy(alpha = 0.5f),
-//                )
         ) {
-            // Top Left: Record Visualization
+            // The record is given no size of its own: it fills the box it is
+            // handed, which is what makes the same layout sit correctly on a
+            // phone and on a tablet.
             Box(
                 modifier = Modifier
                     .weight(0.75f)
-                    .padding(horizontal = 8.dp, vertical = 0.dp),
-//                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
-                RecordVisualization(state = state, processing = processing)
+                RecordVisualization(isPlaying = isPlaying, processing = processing)
             }
 
-
-            // Top Right: Song Selection
             Box(
-                modifier = Modifier
-                    .weight(1f),
-//                    .aspectRatio(1f)
-//                    .fillMaxHeight()
-//                    .border(
-//                        width = 0.8.dp,
-//                        color = Color.White.copy(alpha = 0.5f),
-//                    ),
+                modifier = Modifier.weight(1f),
                 contentAlignment = Alignment.Center
             ) {
                 SongSelection(
                     currentSong = currentSong,
+                    choices = songChoices,
+                    songIsLive = songIsLive,
                     onSongChange = onSongChange,
                     processing = processing,
                 )
@@ -227,26 +220,13 @@ fun MainContent(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-//                .border(
-//                    width = 0.8.dp,
-//                    color = Color.Yellow.copy(alpha = 0.5f),
-//                ),
         ) {
-            // Bottom Left: Volume Fader
             Box(
                 modifier = Modifier
                     .weight(0.75f)
                     .fillMaxSize(),
-//                    .aspectRatio(1f)
-//                    .fillMaxHeight()
-//                    .border(
-//                        width = 0.8.dp,
-//                        color = Color.White.copy(alpha = 0.5f),
-//                    ),
                 contentAlignment = Alignment.Center,
-
-
-                ) {
+            ) {
                 Fader(
                     volume = volume,
                     onVolumeChange = onVolumeChange,
@@ -254,117 +234,97 @@ fun MainContent(
                 )
             }
 
-            // Bottom Right: Volume Display and Play/Pause
             Box(
-                modifier = Modifier
-                    .weight(1f),
-//                    .aspectRatio(1f)
-//                    .fillMaxHeight()
-//                    .border(
-//                        width = 0.8.dp,
-//                        color = Color.White.copy(alpha = 0.5f),
-//                    ),
+                modifier = Modifier.weight(1f),
                 contentAlignment = Alignment.Center
             ) {
                 VolumeAndPlayback(
                     volume = volume,
-                    state = state,
-                    onStateChange = onStateChange,
+                    isPlaying = isPlaying,
+                    onPlaybackToggle = onPlaybackToggle,
                     processing = processing,
+                    canPlay = canPlay,
                 )
             }
         }
+
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
-//                .border(width=1.dp, color = Color.Yellow)
-//                .wrapContentHeight()
-//                .weight(0.4f)
         ) {
-            ToggleConsoleButton(
-                toggleMicrophone = toggleMicrophone,
-                toggleConsole = toggleConsole,
-            )
+            ToggleConsoleButton(onMicrophone = onMicrophone, onAux = onAux)
         }
     }
 }
 
 @Composable
-fun ToggleConsoleButton(toggleMicrophone: () -> Unit, toggleConsole: () -> Unit) {
+fun ToggleConsoleButton(onMicrophone: () -> Unit, onAux: () -> Unit) {
     var isButtonEnabled by remember { mutableStateOf(true) }
-    Row (
-        modifier = Modifier
-            .fillMaxWidth(),
-    ) {
-        Button(
-            modifier = Modifier
-                .weight(0.45f)
-                .padding(vertical = 4.dp),
-            onClick = {
-                if (isButtonEnabled) {
-                    toggleMicrophone()
-                    isButtonEnabled = false
-                }
-            },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF3B0404),
-                disabledContainerColor = Color(0xFF302E2F),
-                disabledContentColor = Color.DarkGray,
-            ),
-            shape = RoundedCornerShape(10.dp),
-            contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
-            enabled = isButtonEnabled
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        ConsoleButton(
+            label = "마이크 켜기",
+            enabled = isButtonEnabled,
+            modifier = Modifier.weight(0.45f),
         ) {
-            Text(
-                "마이크 켜기",
-                fontSize = 20.sp,
-            )
+            onMicrophone()
+            isButtonEnabled = false
         }
-        Spacer(modifier = Modifier.width(20.dp))
-        Button(
-            modifier = Modifier
-                .weight(0.45f)
-                .padding(vertical = 4.dp),
-            onClick = {
-                if (isButtonEnabled) {
-                    toggleConsole()
-                    isButtonEnabled = false
-                }
-            },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF3B0404),
-                disabledContainerColor = Color(0xFF302E2F),
-                disabledContentColor = Color.DarkGray,
-            ),
-            shape = RoundedCornerShape(10.dp),
-            contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
-            enabled = isButtonEnabled
+        Spacer(modifier = Modifier.width(Layout.consoleButtonGap))
+        ConsoleButton(
+            label = "노래 켜기",
+            enabled = isButtonEnabled,
+            modifier = Modifier.weight(0.45f),
         ) {
-            Text(
-                "노래 켜기",
-                fontSize = 20.sp,
-            )
+            onAux()
+            isButtonEnabled = false
         }
     }
 
+    // These fire and forget — the console reports nothing back — so the button
+    // rests briefly instead of inviting a second press with no feedback.
     if (!isButtonEnabled) {
         LaunchedEffect(Unit) {
-            delay(1000)  // 1초 지연
+            delay(BUTTON_COOLDOWN_MS)
             isButtonEnabled = true
         }
     }
 }
 
 @Composable
+private fun ConsoleButton(
+    label: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Button(
+        modifier = modifier.padding(vertical = Layout.consoleButtonPaddingV),
+        onClick = { if (enabled) onClick() },
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF3B0404),
+            disabledContainerColor = Color(0xFF302E2F),
+            disabledContentColor = Color.DarkGray,
+        ),
+        shape = RoundedCornerShape(10.dp),
+        contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
+        enabled = enabled
+    ) {
+        Text(label, fontSize = Layout.consoleButtonText)
+    }
+}
+
+@Composable
 fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit, processing: Boolean) {
     var isButtonEnabled by remember { mutableStateOf(true) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(Layout.statusBarHeight)
             .background(Color(0xff3B3A3A))
-            .padding(horizontal = 20.dp, vertical = 0.dp),
+            .padding(horizontal = Layout.statusBarPaddingH),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -374,34 +334,30 @@ fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit, 
         ) {
             Box(
                 modifier = Modifier
-                    .size(14.dp)
+                    .size(Layout.statusDotSize)
                     .background(
                         when (status) {
-                            is ConnectionStatus.Connected -> Color(0xFF4CAF50)  // Green
-                            is ConnectionStatus.GracePeriod -> Color(0xFF4CAF50)  // Green
-                            is ConnectionStatus.Connecting -> Color(0xFFFFC107)  // Yellow
-                            is ConnectionStatus.Disconnected -> Color(0xFFF44336)  // Red
-                            is ConnectionStatus.Error -> Color(0xFFF44336)  // Red
-                            else -> Color.Gray
+                            is ConnectionStatus.Connected, is ConnectionStatus.GracePeriod -> Color(0xFF4CAF50)
+                            is ConnectionStatus.Connecting -> Color(0xFFFFC107)
+                            is ConnectionStatus.Disconnected, is ConnectionStatus.Error -> Color(0xFFF44336)
                         },
                         shape = CircleShape
                     )
             )
-            Text (
+            Text(
                 text = when (status) {
-                    is ConnectionStatus.Connected -> if (!processing) "연결됨" else "연결됨 (작업 처리 중)"
-                    is ConnectionStatus.GracePeriod -> if (!processing) "연결됨" else "연결됨 (작업 처리 중)"
+                    is ConnectionStatus.Connected, is ConnectionStatus.GracePeriod ->
+                        if (processing) "연결됨 (작업 처리 중)" else "연결됨"
                     is ConnectionStatus.Connecting -> "연결중"
                     is ConnectionStatus.Disconnected -> "연결 끊김"
                     is ConnectionStatus.Error -> "오류: ${status.message}"
-                    else -> "알 수 없는 상태"
                 },
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
+                fontSize = Layout.statusText,
             )
         }
-//        if (status !is ConnectionStatus.Connected && status !is ConnectionStatus.Connecting && status !is ConnectionStatus.GracePeriod) {
+
         Button(
             onClick = {
                 if (isButtonEnabled) {
@@ -414,52 +370,36 @@ fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit, 
             contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
             enabled = isButtonEnabled
         ) {
-            Text(
-                "다시 연결하기",
-                fontSize = 18.sp,
-
-            )
+            Text("다시 연결하기", fontSize = Layout.reconnectText)
         }
+
         if (!isButtonEnabled) {
             LaunchedEffect(Unit) {
-                delay(1000)  // 1초 지연
+                delay(BUTTON_COOLDOWN_MS)
                 isButtonEnabled = true
             }
         }
     }
-//    }
-
 }
 
 @Composable
-fun RecordVisualization(state: Int, processing: Boolean) {
-    var isPlaying by remember { mutableStateOf(false) }
+fun RecordVisualization(isPlaying: Boolean, processing: Boolean) {
     var rotationAngle by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(state) {
-        isPlaying = (state == 1)
-        if (!isPlaying) {
-            rotationAngle %= 360f
-        }
+    LaunchedEffect(isPlaying) {
+        if (!isPlaying) rotationAngle %= 360f
     }
 
     LaunchedEffect(isPlaying, processing) {
         var lastUpdateTime = System.currentTimeMillis()
-
         while (isPlaying || processing) {
             val currentTime = System.currentTimeMillis()
-            val elapsedTime = (currentTime - lastUpdateTime) / 1000f
-
-            // 회전 속도 결정
-            val rotationSpeed = when {
-                isPlaying -> 45f
-                processing -> 10f  // 처리 중일 때는 느리게 (예: 10도/초)
-                else -> 0f
-            }
-
-            rotationAngle += rotationSpeed * elapsedTime
+            val elapsed = (currentTime - lastUpdateTime) / 1000f
+            // Turning slowly while the device works is the one sign that a
+            // fade is under way rather than the app having frozen.
+            val speed = if (isPlaying) 45f else 10f
+            rotationAngle += speed * elapsed
             lastUpdateTime = currentTime
-
             delay(33)
         }
     }
@@ -471,111 +411,61 @@ fun RecordVisualization(state: Int, processing: Boolean) {
         Image(
             painter = painterResource(id = R.drawable.record),
             contentDescription = "Record",
-            modifier = Modifier
-//                .size(150.dp)
-                .graphicsLayer {
-                    rotationZ = rotationAngle
-                }
+            modifier = Modifier.graphicsLayer { rotationZ = rotationAngle }
         )
     }
 }
 
 @Composable
-fun SongSelection(currentSong: String, onSongChange: (String) -> Unit, processing: Boolean) {
-
+fun SongSelection(
+    currentSong: String,
+    choices: List<SongChoice>,
+    songIsLive: Boolean,
+    onSongChange: (String) -> Unit,
+    processing: Boolean,
+) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        /*
-        Surface(
-            onClick = { onSongChange("slow") },
-            modifier = Modifier
-                .fillMaxWidth(0.9f),
-            color = Color(0xff302e2f),
-            shape = RoundedCornerShape(10.dp)
-        ) {
-            Box(
-                modifier = Modifier.padding(vertical = 8.dp), // 필요에 따라 조절
-                contentAlignment = Alignment.Center
+        choices.forEach { choice ->
+            Button(
+                onClick = { onSongChange(choice.id) },
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .padding(vertical = Layout.songButtonPaddingV),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF302E2F),
+                    disabledContainerColor = Color(0xFF302E2F),
+                    disabledContentColor = Color.DarkGray,
+                ),
+                shape = RoundedCornerShape(10.dp),
+                // A song the server does not offer cannot be chosen. The button
+                // stays put so the screen does not rearrange itself.
+                enabled = choice.available && !processing
             ) {
+                // The tick means "this is what you are hearing". While a flow
+                // plays its own track that is true of neither, so neither gets
+                // one.
+                val selected = songIsLive && choice.available && currentSong == choice.id
                 Text(
-                    text = if (currentSong == "slow") "✓ 잔잔한 음악" else "잔잔한 음악",
-                    fontSize = 18.sp,
-                    color = Color.White
+                    if (selected) "✓ ${choice.title}" else choice.title,
+                    fontSize = Layout.songButtonText
                 )
             }
         }
-         */
-        Button(
-            onClick = {
-                onSongChange("slow")
-            },
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .padding(vertical = 15.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF302E2F),
-                disabledContainerColor = Color(0xFF302E2F),
-                disabledContentColor = Color.DarkGray,
-            ),
-            shape = RoundedCornerShape(10.dp),
-            enabled = !processing
-
-        ) {
-            Text(
-                if (currentSong == "slow") "✓ 잔잔한 음악" else "잔잔한 음악",
-                fontSize = 18.sp
-            )
-        }
-//        Spacer(modifier = Modifier.height(10.dp))
-        Button(
-            onClick = {
-                onSongChange("fast")
-            },
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .padding(vertical = 0.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF302E2F),
-                disabledContainerColor = Color(0xFF302E2F),
-                disabledContentColor = Color.DarkGray,
-            ),
-            shape = RoundedCornerShape(10.dp),
-            enabled = !processing
-        ) {
-            Text(
-                if (currentSong == "fast") "✓ 통성기도 음악" else "통성기도 음악",
-                fontSize = 18.sp
-            )
-        }
-        /*
-        Surface(
-            onClick = { onSongChange("fast") },
-            modifier = Modifier
-                .fillMaxWidth(0.9f),
-            color = Color(0xff302e2f),
-            shape = RoundedCornerShape(10.dp)
-        ) {
-            Box(
-                modifier = Modifier.padding(vertical = 8.dp), // 필요에 따라 조절
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (currentSong == "fast") "✓ 통성기도 음악" else "통성기도 음악",
-                    fontSize = 18.sp,
-                    color = Color.White
-                )
-            }
-        }
-         */
     }
 }
 
 @Composable
-fun VolumeAndPlayback(volume: Int, state: Int, onStateChange: () -> Unit, processing: Boolean) {
-
+fun VolumeAndPlayback(
+    volume: Int,
+    isPlaying: Boolean,
+    onPlaybackToggle: () -> Unit,
+    processing: Boolean,
+    canPlay: Boolean,
+) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -583,38 +473,36 @@ fun VolumeAndPlayback(volume: Int, state: Int, onStateChange: () -> Unit, proces
     ) {
         Text(
             text = volume.toString(),
-            style = MaterialTheme.typography.displayLarge.copy(fontSize = 110.sp),
+            style = MaterialTheme.typography.displayLarge.copy(fontSize = Layout.volumeText),
             color = Color.White,
             fontWeight = FontWeight.ExtraBold
         )
-        Spacer(modifier = Modifier.height(30.dp))
+        Spacer(modifier = Modifier.height(Layout.transportGap))
         Button(
-            onClick = {
-                onStateChange()
-            },
-            modifier = Modifier
-                .padding(0.dp)
-                .size(80.dp),
+            onClick = onPlaybackToggle,
+            modifier = Modifier.size(Layout.playButtonSize),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF302E2F),
                 disabledContainerColor = Color(0xFF302E2F),
             ),
             shape = CircleShape,
             contentPadding = PaddingValues(0.dp),
-            enabled = !processing
+            // With no song available there is nothing to start, so the
+            // transport goes quiet rather than sending a write that fails.
+            enabled = canPlay && !processing
         ) {
             Icon(
-                imageVector = if (state == 1) Icons.Default.Pause else Icons.Default.PlayArrow, // TODO
-                contentDescription = if (state == 1) "Pause" else "Play",
-                modifier = Modifier.size(60.dp),
-                tint = if (processing) Color.Gray else Color.White
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                modifier = Modifier.size(Layout.playIconSize),
+                tint = if (canPlay && !processing) Color.White else Color.Gray
             )
         }
     }
 }
 
 @Composable
-fun Footer(onRefreshClick: () -> Unit) {
+fun Footer() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -623,22 +511,9 @@ fun Footer(onRefreshClick: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
-            Text("사랑의빛교회 기도음악 재생", color = Color.White, fontSize = 15.sp)
-//            Text("v0.1.0 | ${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())}", color = Color.White, fontSize = 15.sp)
-        }
-//        Column {
-//            Text("Last communication: ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())}", color = Color.White, fontSize = 12.sp)
-//        }
-        Column {
-            Text("v1.2.0", color = Color.White, fontSize = 15.sp)
-        }
-//        Button(
-//            onClick = onRefreshClick,
-//            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF302E2F)),
-//            shape = RoundedCornerShape(10.dp),
-//        ) {
-//            Text("새로고침")
-//        }
+        Text(stringResource(R.string.app_name), color = Color.White, fontSize = Layout.footerText)
+        // Read from the build rather than typed here, which is how the footer
+        // came to read v1.2.0 while the package said 1.0.
+        Text("v${BuildConfig.VERSION_NAME}", color = Color.White, fontSize = Layout.footerText)
     }
 }
