@@ -68,6 +68,10 @@ class MainViewModel : ViewModel() {
     val consoleAvailable: StateFlow<Boolean> =
         ready.mapState { it?.supportsCommand(Protocol.Command.ENABLE_CONSOLE_INPUT) == true }
 
+    /** The desk's own answer: an input already on gets no second press. */
+    val micOn: StateFlow<Boolean> = state.mapState { readConsoleOn(it, Protocol.ConsoleInput.MIC) }
+    val auxOn: StateFlow<Boolean> = state.mapState { readConsoleOn(it, Protocol.ConsoleInput.AUX) }
+
     init {
         viewModelScope.launch { socketManager.initSocket() }
     }
@@ -122,6 +126,13 @@ class MainViewModel : ViewModel() {
  * it becomes Unknown and is shown as such. Treating it as idle would tell the
  * operator nothing is running while a service is under way.
  */
+// Note(yoochan.kim): unknown reads as off — the desk not answering must not
+// lock the buttons away.
+private fun readConsoleOn(state: JSONObject, input: String): Boolean {
+    val read = state.optJSONObject(Protocol.Attribute.CONSOLE)?.optJSONObject(input) ?: return false
+    return read.optString("kind") == "read" && read.optBoolean("on")
+}
+
 private fun readFlow(state: JSONObject): FlowStatus {
     val flow = state.optJSONObject(Protocol.Attribute.FLOW) ?: return FlowStatus.Idle
     return when (flow.optString("phase")) {

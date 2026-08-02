@@ -41,6 +41,7 @@ object Protocol {
         const val AUDIO_LOCK = "audioLock"
         const val IS_ADMIN = "isAdmin"
         const val FLOW = "flow"
+        const val CONSOLE = "console"
     }
 
     object Command {

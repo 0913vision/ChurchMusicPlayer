@@ -72,6 +72,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val flow by viewModel.flow.collectAsState()
     val helpline by viewModel.helpline.collectAsState()
     val rejection by viewModel.rejection.collectAsState()
+    val micOn by viewModel.micOn.collectAsState()
+    val auxOn by viewModel.auxOn.collectAsState()
 
     Column(
         modifier = Modifier
@@ -106,6 +108,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onPlaybackToggle = { viewModel.togglePlayback() },
                 onSongChange = { viewModel.changeSong(it) },
                 processing = processing,
+                micOn = micOn,
+                auxOn = auxOn,
                 onMicrophone = { viewModel.enableMicrophone() },
                 onAux = { viewModel.enableAux() },
             )
@@ -176,6 +180,8 @@ fun MainContent(
     onPlaybackToggle: () -> Unit,
     onSongChange: (String) -> Unit,
     processing: Boolean,
+    micOn: Boolean,
+    auxOn: Boolean,
     onMicrophone: () -> Unit,
     onAux: () -> Unit,
 ) {
@@ -253,41 +259,41 @@ fun MainContent(
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
         ) {
-            ToggleConsoleButton(onMicrophone = onMicrophone, onAux = onAux)
+            ToggleConsoleButton(micOn = micOn, auxOn = auxOn, onMicrophone = onMicrophone, onAux = onAux)
         }
     }
 }
 
 @Composable
-fun ToggleConsoleButton(onMicrophone: () -> Unit, onAux: () -> Unit) {
-    var isButtonEnabled by remember { mutableStateOf(true) }
+fun ToggleConsoleButton(micOn: Boolean, auxOn: Boolean, onMicrophone: () -> Unit, onAux: () -> Unit) {
+    var resting by remember { mutableStateOf(false) }
 
     Row(modifier = Modifier.fillMaxWidth()) {
         ConsoleButton(
-            label = "마이크 켜기",
-            enabled = isButtonEnabled,
+            label = if (micOn) "마이크 켜져 있음" else "마이크 켜기",
+            enabled = !resting && !micOn,
             modifier = Modifier.weight(0.45f),
         ) {
             onMicrophone()
-            isButtonEnabled = false
+            resting = true
         }
         Spacer(modifier = Modifier.width(Layout.consoleButtonGap))
         ConsoleButton(
-            label = "노래 켜기",
-            enabled = isButtonEnabled,
+            label = if (auxOn) "노래 켜져 있음" else "노래 켜기",
+            enabled = !resting && !auxOn,
             modifier = Modifier.weight(0.45f),
         ) {
             onAux()
-            isButtonEnabled = false
+            resting = true
         }
     }
 
-    // These fire and forget — the console reports nothing back — so the button
-    // rests briefly instead of inviting a second press with no feedback.
-    if (!isButtonEnabled) {
+    // Note(yoochan.kim): the desk's answer takes a poll to arrive, so a short
+    // rest covers the gap before 켜져 있음 lands.
+    if (resting) {
         LaunchedEffect(Unit) {
             delay(BUTTON_COOLDOWN_MS)
-            isButtonEnabled = true
+            resting = false
         }
     }
 }
