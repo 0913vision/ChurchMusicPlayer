@@ -13,3 +13,11 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Build outputs — never tracked. APKs and profiles are produced, not authored.
+build/
+/app/release/
+/app/nolock/
+*.apk
+*.aab
+*.dm

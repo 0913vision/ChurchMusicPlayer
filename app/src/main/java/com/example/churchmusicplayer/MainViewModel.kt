@@ -28,11 +28,9 @@ class MainViewModel : ViewModel() {
     private val _processing = MutableStateFlow(false)
     val processing: StateFlow<Boolean> = _processing
 
-    private fun setProcessing() {
+    private fun setProcessing(value: Boolean) {
         viewModelScope.launch {
-            _processing.value = true
-            delay(1500)
-            _processing.value = false
+            _processing.value = value
         }
     }
 
@@ -72,6 +70,10 @@ class MainViewModel : ViewModel() {
         socketManager.on("songChanged") { args ->
             args[0]?.let { _currentSong.value = it as String }
         }
+
+        socketManager.on("lockChanged") { args ->
+            args[0]?.let { setProcessing(it as Boolean) }
+        }
     }
 
     fun changeVolume(newVolume: Int) {
@@ -79,7 +81,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun changeState() {
-        setProcessing()
+        setProcessing(false)
         val newState = if (_state.value == 0) 1 else 0
         socketManager.emit("changeState", newState)
     }
@@ -90,12 +92,17 @@ class MainViewModel : ViewModel() {
     }
 
     fun changeSong(newSong: String) {
-        if (_state.value != 0) {
-            setProcessing()
-        }
+        setProcessing(false)
         if (_currentSong.value != newSong) {
             socketManager.emit("changeSong", _currentSong.value, newSong)
         }
+    }
+
+    fun toggleMicrophone() {
+        socketManager.emit("micOn")
+    }
+    fun toggleConsole() {
+        socketManager.emit("auxOn")
     }
 
     fun reconnect() {

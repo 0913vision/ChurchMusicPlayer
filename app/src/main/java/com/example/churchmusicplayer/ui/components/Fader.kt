@@ -24,6 +24,7 @@ import kotlin.math.roundToInt
 fun Fader(
     volume: Int,
     onVolumeChange: (Int) -> Unit,
+    processing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var faderHeight by remember { mutableStateOf(0) }
@@ -75,19 +76,30 @@ fun Fader(
                     ambientColor = Color.Black,
                     spotColor = Color.Black
                 )
-                .draggable(
-                    orientation = Orientation.Vertical,
-                    state = rememberDraggableState { delta ->
-                        dragOffset = (dragOffset + delta).coerceIn(0f, (faderHeight - thumbHeight).toFloat())
-                        val newVolume = (100 - (dragOffset / (faderHeight - thumbHeight) * 100)).roundToInt().coerceIn(0, 100)
-                        onVolumeChange(newVolume)
-                    },
-                    onDragStarted = { isDragging = true },
-                    onDragStopped = { isDragging = false }
+                .then(
+                    if (!processing) {
+                        Modifier.draggable(
+                            orientation = Orientation.Vertical,
+                            state = rememberDraggableState { delta ->
+                                dragOffset = (dragOffset + delta).coerceIn(0f, (faderHeight - thumbHeight).toFloat())
+                                val newVolume = (100 - (dragOffset / (faderHeight - thumbHeight) * 100)).roundToInt().coerceIn(0, 100)
+                                onVolumeChange(newVolume)
+                            },
+                            onDragStarted = { isDragging = true },
+                            onDragStopped = { isDragging = false }
+                        )
+                    } else {
+                        Modifier
+                    }
                 ),
             shape = RoundedCornerShape(10.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            colors = CardDefaults.cardColors(
+                // processing이 true면 회색으로 변경하고 투명도 추가
+                containerColor = if (!processing) Color.White else Color.Gray.copy(alpha = 0.6f)
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = if (!processing) 4.dp else 1.dp // processing이 true면 elevation 감소
+            )
         ) {}
     }
 

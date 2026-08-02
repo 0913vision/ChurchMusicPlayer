@@ -134,6 +134,7 @@ class SocketManager {
         emit("getState")
         emit("getMute")
         emit("getCurrentSong")
+        emit("getLock")
     }
 
 }

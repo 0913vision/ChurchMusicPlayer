@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -46,15 +47,15 @@ import kotlinx.coroutines.flow.StateFlow
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+//        enableEdgeToEdge()
 
-        @Suppress("DEPRECATION")
+//        @Suppress("DEPRECATION")
 //        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
 //        actionBar?.hide()
-
-        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+//
+//        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
+//                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+//                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
 
         super.onCreate(savedInstanceState)
         setContent {
@@ -67,7 +68,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        startLockTask()
+//        startLockTask()
     }
 }
 
@@ -92,7 +93,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         ) {
             ConnectionStatusBar(
                 status = connectionStatus,
-                onReconnectClick = { viewModel.reconnect() }
+                onReconnectClick = { viewModel.reconnect() },
+                processing = processing,
             )
         }
 
@@ -112,6 +114,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onStateChange = { viewModel.changeState() },
                 onSongChange = { viewModel.changeSong(it) },
                 processing = processing,
+                toggleMicrophone = { viewModel.toggleMicrophone() },
+                toggleConsole =  { viewModel.toggleConsole() },
             )
             if (connectionStatus !is ConnectionStatus.Connected && connectionStatus !is ConnectionStatus.GracePeriod) {
                 Box(
@@ -168,16 +172,20 @@ fun MainContent(
     onStateChange: () -> Unit,
     onSongChange: (String) -> Unit,
     processing: Boolean,
+    toggleMicrophone: () -> Unit,
+    toggleConsole: () -> Unit
 ) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
+//            .fillMaxSize()
             .padding(horizontal = 30.dp, vertical = 50.dp),
     ) {
         Row(
             modifier = Modifier
-                .weight(0.3f)
+//                .weight(0.75f)
+//                .wrapContentHeight()
                 .fillMaxWidth()
+                .height(IntrinsicSize.Min)
 //                .border(
 //                    width = 0.8.dp,
 //                    color = Color.Yellow.copy(alpha = 0.5f),
@@ -186,16 +194,12 @@ fun MainContent(
             // Top Left: Record Visualization
             Box(
                 modifier = Modifier
-                    .weight(0.9f)
-                    .padding(12.dp),
+                    .weight(0.75f)
+                    .padding(horizontal = 8.dp, vertical = 0.dp),
 //                    .fillMaxSize()
-//                    .border(
-//                        width = 0.8.dp,
-//                        color = Color.White.copy(alpha = 0.5f),
-//                    ),
                 contentAlignment = Alignment.Center
             ) {
-                RecordVisualization(state = state)
+                RecordVisualization(state = state, processing = processing)
             }
 
 
@@ -231,7 +235,7 @@ fun MainContent(
             // Bottom Left: Volume Fader
             Box(
                 modifier = Modifier
-                    .weight(0.9f)
+                    .weight(0.75f)
                     .fillMaxSize(),
 //                    .aspectRatio(1f)
 //                    .fillMaxHeight()
@@ -245,7 +249,8 @@ fun MainContent(
                 ) {
                 Fader(
                     volume = volume,
-                    onVolumeChange = onVolumeChange
+                    onVolumeChange = onVolumeChange,
+                    processing = processing,
                 )
             }
 
@@ -269,11 +274,90 @@ fun MainContent(
                 )
             }
         }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+//                .border(width=1.dp, color = Color.Yellow)
+//                .wrapContentHeight()
+//                .weight(0.4f)
+        ) {
+            ToggleConsoleButton(
+                toggleMicrophone = toggleMicrophone,
+                toggleConsole = toggleConsole,
+            )
+        }
     }
 }
 
 @Composable
-fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit) {
+fun ToggleConsoleButton(toggleMicrophone: () -> Unit, toggleConsole: () -> Unit) {
+    var isButtonEnabled by remember { mutableStateOf(true) }
+    Row (
+        modifier = Modifier
+            .fillMaxWidth(),
+    ) {
+        Button(
+            modifier = Modifier
+                .weight(0.45f)
+                .padding(vertical = 4.dp),
+            onClick = {
+                if (isButtonEnabled) {
+                    toggleMicrophone()
+                    isButtonEnabled = false
+                }
+            },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF3B0404),
+                disabledContainerColor = Color(0xFF302E2F),
+                disabledContentColor = Color.DarkGray,
+            ),
+            shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
+            enabled = isButtonEnabled
+        ) {
+            Text(
+                "마이크 켜기",
+                fontSize = 20.sp,
+            )
+        }
+        Spacer(modifier = Modifier.width(20.dp))
+        Button(
+            modifier = Modifier
+                .weight(0.45f)
+                .padding(vertical = 4.dp),
+            onClick = {
+                if (isButtonEnabled) {
+                    toggleConsole()
+                    isButtonEnabled = false
+                }
+            },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF3B0404),
+                disabledContainerColor = Color(0xFF302E2F),
+                disabledContentColor = Color.DarkGray,
+            ),
+            shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
+            enabled = isButtonEnabled
+        ) {
+            Text(
+                "노래 켜기",
+                fontSize = 20.sp,
+            )
+        }
+    }
+
+    if (!isButtonEnabled) {
+        LaunchedEffect(Unit) {
+            delay(1000)  // 1초 지연
+            isButtonEnabled = true
+        }
+    }
+}
+
+@Composable
+fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit, processing: Boolean) {
     var isButtonEnabled by remember { mutableStateOf(true) }
     Row(
         modifier = Modifier
@@ -305,8 +389,8 @@ fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit) 
             )
             Text (
                 text = when (status) {
-                    is ConnectionStatus.Connected -> "연결됨"
-                    is ConnectionStatus.GracePeriod -> "연결됨"
+                    is ConnectionStatus.Connected -> if (!processing) "연결됨" else "연결됨 (작업 처리 중)"
+                    is ConnectionStatus.GracePeriod -> if (!processing) "연결됨" else "연결됨 (작업 처리 중)"
                     is ConnectionStatus.Connecting -> "연결중"
                     is ConnectionStatus.Disconnected -> "연결 끊김"
                     is ConnectionStatus.Error -> "오류: ${status.message}"
@@ -348,7 +432,7 @@ fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit) 
 }
 
 @Composable
-fun RecordVisualization(state: Int) {
+fun RecordVisualization(state: Int, processing: Boolean) {
     var isPlaying by remember { mutableStateOf(false) }
     var rotationAngle by remember { mutableFloatStateOf(0f) }
 
@@ -359,17 +443,24 @@ fun RecordVisualization(state: Int) {
         }
     }
 
-    LaunchedEffect(isPlaying) {
-        val rotationSpeed = 45f  // 회전 속도 (도/초)
+    LaunchedEffect(isPlaying, processing) {
         var lastUpdateTime = System.currentTimeMillis()
 
-        while (isPlaying) {
+        while (isPlaying || processing) {
             val currentTime = System.currentTimeMillis()
-            val elapsedTime = (currentTime - lastUpdateTime) / 1000f  // 초 단위로 변환
+            val elapsedTime = (currentTime - lastUpdateTime) / 1000f
+
+            // 회전 속도 결정
+            val rotationSpeed = when {
+                isPlaying -> 45f
+                processing -> 10f  // 처리 중일 때는 느리게 (예: 10도/초)
+                else -> 0f
+            }
+
             rotationAngle += rotationSpeed * elapsedTime
             lastUpdateTime = currentTime
 
-            delay(33)  // 약 30 FPS
+            delay(33)
         }
     }
 
@@ -381,7 +472,7 @@ fun RecordVisualization(state: Int) {
             painter = painterResource(id = R.drawable.record),
             contentDescription = "Record",
             modifier = Modifier
-                .size(250.dp)
+//                .size(150.dp)
                 .graphicsLayer {
                     rotationZ = rotationAngle
                 }
@@ -423,7 +514,7 @@ fun SongSelection(currentSong: String, onSongChange: (String) -> Unit, processin
             },
             modifier = Modifier
                 .fillMaxWidth(0.9f)
-                .padding(vertical = 8.dp),
+                .padding(vertical = 15.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF302E2F),
                 disabledContainerColor = Color(0xFF302E2F),
@@ -445,7 +536,7 @@ fun SongSelection(currentSong: String, onSongChange: (String) -> Unit, processin
             },
             modifier = Modifier
                 .fillMaxWidth(0.9f)
-                .padding(vertical = 8.dp),
+                .padding(vertical = 0.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF302E2F),
                 disabledContainerColor = Color(0xFF302E2F),
@@ -540,7 +631,7 @@ fun Footer(onRefreshClick: () -> Unit) {
 //            Text("Last communication: ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())}", color = Color.White, fontSize = 12.sp)
 //        }
         Column {
-            Text("v0.1.0", color = Color.White, fontSize = 15.sp)
+            Text("v1.2.0", color = Color.White, fontSize = 15.sp)
         }
 //        Button(
 //            onClick = onRefreshClick,
