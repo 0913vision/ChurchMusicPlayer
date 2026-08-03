@@ -101,12 +101,11 @@ class SocketManager {
 
         socket.on(Protocol.S2C.REJECTED) { args ->
             val payload = args.firstOrNull() as? JSONObject ?: return@on
-            val target = payload.optString("target")
-            val reason = RejectReason.of(payload.optString("reason"))
-            // Note(yoochan.kim): a drag colliding with a fade is routine, and the
-            // fader itself snaps back — a toast per pixel is just noise.
-            if (target == Protocol.Attribute.VOLUME && reason == RejectReason.DEVICE_BUSY) return@on
-            _rejection.value = Rejection(target = target, reason = reason, at = System.currentTimeMillis())
+            _rejection.value = Rejection(
+                target = payload.optString("target"),
+                reason = RejectReason.of(payload.optString("reason")),
+                at = System.currentTimeMillis(),
+            )
         }
 
         socket.on(Socket.EVENT_CONNECT_ERROR) { handleDisconnection() }

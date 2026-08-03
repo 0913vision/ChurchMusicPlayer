@@ -76,21 +76,21 @@ fun Fader(
                     ambientColor = Color.Black,
                     spotColor = Color.Black
                 )
-                .then(
-                    if (!processing) {
-                        Modifier.draggable(
-                            orientation = Orientation.Vertical,
-                            state = rememberDraggableState { delta ->
-                                dragOffset = (dragOffset + delta).coerceIn(0f, (faderHeight - thumbHeight).toFloat())
-                                val newVolume = (100 - (dragOffset / (faderHeight - thumbHeight) * 100)).roundToInt().coerceIn(0, 100)
-                                onVolumeChange(newVolume)
-                            },
-                            onDragStarted = { isDragging = true },
-                            onDragStopped = { isDragging = false }
-                        )
-                    } else {
-                        Modifier
-                    }
+                // Note(yoochan.kim): the gesture stays attached even while
+                // processing — swapping the modifier mid-drag kills the drag,
+                // and every accepted write flips audioLock for a moment.
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { delta ->
+                        // Note(yoochan.kim): while the deck is locked the fader is
+                        // inert — the thumb must not move only to snap back.
+                        if (processing) return@rememberDraggableState
+                        dragOffset = (dragOffset + delta).coerceIn(0f, (faderHeight - thumbHeight).toFloat())
+                        val newVolume = (100 - (dragOffset / (faderHeight - thumbHeight) * 100)).roundToInt().coerceIn(0, 100)
+                        onVolumeChange(newVolume)
+                    },
+                    onDragStarted = { isDragging = true },
+                    onDragStopped = { isDragging = false }
                 ),
             shape = RoundedCornerShape(10.dp),
             colors = CardDefaults.cardColors(

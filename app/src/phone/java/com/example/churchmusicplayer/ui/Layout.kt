@@ -28,7 +28,7 @@ object Layout {
     val reconnectText = 18.sp
 
     // Song selection
-    val songButtonPaddingV = 15.dp
+    val songButtonPaddingV = 6.dp
     val songButtonText = 18.sp
 
     // Console buttons (microphone / music)
