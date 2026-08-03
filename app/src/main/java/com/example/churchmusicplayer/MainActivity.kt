@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
@@ -279,7 +280,18 @@ fun ToggleConsoleButton(micSignal: ConsoleSignal, auxSignal: ConsoleSignal, onMi
                 .padding(vertical = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text("음향 장비 응답 없음", color = Color(0xFF9E9894), fontSize = Layout.consoleButtonText)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LinkOff,
+                    contentDescription = null,
+                    tint = Color(0xFF9E9894),
+                    modifier = Modifier.size(20.dp),
+                )
+                Text("음향 장비 응답 없음", color = Color(0xFF9E9894), fontSize = Layout.consoleButtonText)
+            }
         }
         return
     }
