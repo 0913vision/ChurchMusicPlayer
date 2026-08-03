@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +62,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainScreen(viewModel: MainViewModel = viewModel()) {
+    // Sizes follow the window, not the build variant.
+    Layout.forWidth(LocalConfiguration.current.screenWidthDp)
+
     val volume by viewModel.volume.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
     val currentSong by viewModel.currentSong.collectAsState()
@@ -96,8 +100,17 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         Box(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
+                .fillMaxWidth(),
+            contentAlignment = Alignment.TopCenter,
         ) {
+            // Wide screens cap the content column; stretching controls across a
+            // whole tablet makes them worse, not bigger.
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = Layout.contentMaxWidth)
+                    .fillMaxWidth()
+            ) {
             MainContent(
                 volume = volume,
                 isPlaying = isPlaying,
@@ -114,6 +127,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onMicrophone = { viewModel.enableMicrophone() },
                 onAux = { viewModel.enableAux() },
             )
+            }
 
             // Two things take the whole screen away, and for the same reason:
             // nothing the operator does here would be accepted. Losing the
