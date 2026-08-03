@@ -96,7 +96,16 @@ fun Fader(
             elevation = CardDefaults.cardElevation(
                 defaultElevation = if (!processing) 4.dp else 1.dp // processing이 true면 elevation 감소
             )
-        ) {}
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .width(44.dp)
+                        .height(4.dp)
+                        .background(Color(0xFFB9B4B2), RoundedCornerShape(2.dp))
+                )
+            }
+        }
     }
 
     LaunchedEffect(volume) {
