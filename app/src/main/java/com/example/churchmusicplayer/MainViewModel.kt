@@ -73,9 +73,9 @@ class MainViewModel : ViewModel() {
     val consoleAvailable: StateFlow<Boolean> =
         ready.mapState { it?.supportsCommand(Protocol.Command.ENABLE_CONSOLE_INPUT) == true }
 
-    /** The desk's own answer: an input already on gets no second press. */
-    val micOn: StateFlow<Boolean> = state.mapState { readConsoleOn(it, Protocol.ConsoleInput.MIC) }
-    val auxOn: StateFlow<Boolean> = state.mapState { readConsoleOn(it, Protocol.ConsoleInput.AUX) }
+    /** The desk's own answer: on gets no second press, off gets the red signal. */
+    val micSignal: StateFlow<ConsoleSignal> = state.mapState { readConsoleSignal(it, Protocol.ConsoleInput.MIC) }
+    val auxSignal: StateFlow<ConsoleSignal> = state.mapState { readConsoleSignal(it, Protocol.ConsoleInput.AUX) }
 
     // Note(yoochan.kim): a drag fires per pixel; the device wants only the latest
     private val volumeWrites = MutableSharedFlow<Int>(
@@ -142,11 +142,13 @@ class MainViewModel : ViewModel() {
  * it becomes Unknown and is shown as such. Treating it as idle would tell the
  * operator nothing is running while a service is under way.
  */
-// Note(yoochan.kim): unknown reads as off — the desk not answering must not
-// lock the buttons away.
-private fun readConsoleOn(state: JSONObject, input: String): Boolean {
-    val read = state.optJSONObject(Protocol.Attribute.CONSOLE)?.optJSONObject(input) ?: return false
-    return read.optString("kind") == "read" && read.optBoolean("on")
+/** One console input as the desk answered it; known is false while it is silent. */
+data class ConsoleSignal(val known: Boolean = false, val on: Boolean = false)
+
+private fun readConsoleSignal(state: JSONObject, input: String): ConsoleSignal {
+    val read = state.optJSONObject(Protocol.Attribute.CONSOLE)?.optJSONObject(input) ?: return ConsoleSignal()
+    if (read.optString("kind") != "read") return ConsoleSignal()
+    return ConsoleSignal(known = true, on = read.optBoolean("on"))
 }
 
 private fun readFlow(state: JSONObject): FlowStatus {

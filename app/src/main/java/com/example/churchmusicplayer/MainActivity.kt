@@ -72,8 +72,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
     val flow by viewModel.flow.collectAsState()
     val helpline by viewModel.helpline.collectAsState()
     val rejection by viewModel.rejection.collectAsState()
-    val micOn by viewModel.micOn.collectAsState()
-    val auxOn by viewModel.auxOn.collectAsState()
+    val micSignal by viewModel.micSignal.collectAsState()
+    val auxSignal by viewModel.auxSignal.collectAsState()
 
     Column(
         modifier = Modifier
@@ -108,8 +108,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                 onPlaybackToggle = { viewModel.togglePlayback() },
                 onSongChange = { viewModel.changeSong(it) },
                 processing = processing,
-                micOn = micOn,
-                auxOn = auxOn,
+                micSignal = micSignal,
+                auxSignal = auxSignal,
                 onMicrophone = { viewModel.enableMicrophone() },
                 onAux = { viewModel.enableAux() },
             )
@@ -180,8 +180,8 @@ fun MainContent(
     onPlaybackToggle: () -> Unit,
     onSongChange: (String) -> Unit,
     processing: Boolean,
-    micOn: Boolean,
-    auxOn: Boolean,
+    micSignal: ConsoleSignal,
+    auxSignal: ConsoleSignal,
     onMicrophone: () -> Unit,
     onAux: () -> Unit,
 ) {
@@ -259,19 +259,20 @@ fun MainContent(
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
         ) {
-            ToggleConsoleButton(micOn = micOn, auxOn = auxOn, onMicrophone = onMicrophone, onAux = onAux)
+            ToggleConsoleButton(micSignal = micSignal, auxSignal = auxSignal, onMicrophone = onMicrophone, onAux = onAux)
         }
     }
 }
 
 @Composable
-fun ToggleConsoleButton(micOn: Boolean, auxOn: Boolean, onMicrophone: () -> Unit, onAux: () -> Unit) {
+fun ToggleConsoleButton(micSignal: ConsoleSignal, auxSignal: ConsoleSignal, onMicrophone: () -> Unit, onAux: () -> Unit) {
     var resting by remember { mutableStateOf(false) }
 
     Row(modifier = Modifier.fillMaxWidth()) {
         ConsoleButton(
-            label = if (micOn) "마이크 켜져 있음" else "마이크 켜기",
-            enabled = !resting && !micOn,
+            label = if (micSignal.known && micSignal.on) "마이크 켜져 있음" else "마이크 켜기",
+            enabled = !resting && !(micSignal.known && micSignal.on),
+            alert = micSignal.known && !micSignal.on,
             modifier = Modifier.weight(0.45f),
         ) {
             onMicrophone()
@@ -279,8 +280,9 @@ fun ToggleConsoleButton(micOn: Boolean, auxOn: Boolean, onMicrophone: () -> Unit
         }
         Spacer(modifier = Modifier.width(Layout.consoleButtonGap))
         ConsoleButton(
-            label = if (auxOn) "노래 켜져 있음" else "노래 켜기",
-            enabled = !resting && !auxOn,
+            label = if (auxSignal.known && auxSignal.on) "노래 켜져 있음" else "노래 켜기",
+            enabled = !resting && !(auxSignal.known && auxSignal.on),
+            alert = auxSignal.known && !auxSignal.on,
             modifier = Modifier.weight(0.45f),
         ) {
             onAux()
@@ -302,6 +304,7 @@ fun ToggleConsoleButton(micOn: Boolean, auxOn: Boolean, onMicrophone: () -> Unit
 private fun ConsoleButton(
     label: String,
     enabled: Boolean,
+    alert: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -309,7 +312,8 @@ private fun ConsoleButton(
         modifier = modifier.padding(vertical = Layout.consoleButtonPaddingV),
         onClick = { if (enabled) onClick() },
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF302E2F),
+            // Note(yoochan.kim): red is the desk saying this input is off
+            containerColor = if (alert) Color(0xFF3B0404) else Color(0xFF302E2F),
             disabledContainerColor = Color(0xFF262425),
             disabledContentColor = Color.DarkGray,
         ),
