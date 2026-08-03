@@ -309,8 +309,8 @@ private fun ConsoleButton(
         modifier = modifier.padding(vertical = Layout.consoleButtonPaddingV),
         onClick = { if (enabled) onClick() },
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF3B0404),
-            disabledContainerColor = Color(0xFF302E2F),
+            containerColor = Color(0xFF302E2F),
+            disabledContainerColor = Color(0xFF262425),
             disabledContentColor = Color.DarkGray,
         ),
         shape = RoundedCornerShape(10.dp),
