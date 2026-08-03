@@ -155,7 +155,7 @@ fun RejectionNotice(rejection: Rejection?, onDismiss: () -> Unit) {
         contentAlignment = Alignment.BottomCenter
     ) {
         Surface(
-            color = Color(0xFF3B0404),
+            color = Color(0xFF34302F),
             shape = RoundedCornerShape(10.dp),
         ) {
             Text(

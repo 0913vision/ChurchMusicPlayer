@@ -3,10 +3,15 @@ package com.example.churchmusicplayer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.churchmusicplayer.data.*
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
+private const val VOLUME_WRITE_INTERVAL_MS = 80L
+
+@OptIn(FlowPreview::class)
 class MainViewModel : ViewModel() {
     private val socketManager = SocketManager()
 
@@ -72,12 +77,24 @@ class MainViewModel : ViewModel() {
     val micOn: StateFlow<Boolean> = state.mapState { readConsoleOn(it, Protocol.ConsoleInput.MIC) }
     val auxOn: StateFlow<Boolean> = state.mapState { readConsoleOn(it, Protocol.ConsoleInput.AUX) }
 
+    // Note(yoochan.kim): a drag fires per pixel; the device wants the latest
+    // value, not every one, and unthrottled writes collide with their own fades.
+    private val volumeWrites = MutableSharedFlow<Int>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
     init {
         viewModelScope.launch { socketManager.initSocket() }
+        viewModelScope.launch {
+            volumeWrites.sample(VOLUME_WRITE_INTERVAL_MS).collect {
+                socketManager.write(Protocol.Attribute.VOLUME, it)
+            }
+        }
     }
 
     fun changeVolume(newVolume: Int) {
-        socketManager.write(Protocol.Attribute.VOLUME, newVolume)
+        volumeWrites.tryEmit(newVolume)
     }
 
     fun togglePlayback() {
