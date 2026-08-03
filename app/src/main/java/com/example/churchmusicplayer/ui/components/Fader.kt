@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
+import com.example.churchmusicplayer.ui.Layout
 import kotlin.math.roundToInt
 
 @Composable
@@ -44,7 +45,7 @@ fun Fader(
         // Fader track
         Box(
             modifier = Modifier
-                .width(15.dp)
+                .width(Layout.faderTrackWidth)
                 .fillMaxHeight()
                 .align(Alignment.Center)
                 .background(Color.DarkGray)
@@ -59,10 +60,8 @@ fun Fader(
 
         Card(
             modifier = Modifier
-                .width(90.dp)
-//                .fillMaxWidth()
-//                .padding(horizontal=30.dp)
-                .height(60.dp)
+                .width(Layout.faderThumbWidth)
+                .height(Layout.faderThumbHeight)
 //                .shadow(1.dp)
                 .align(Alignment.TopCenter)
                 .offset { IntOffset(0, thumbOffset.roundToInt()) }
@@ -100,8 +99,8 @@ fun Fader(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Box(
                     Modifier
-                        .width(44.dp)
-                        .height(4.dp)
+                        .width(Layout.faderThumbWidth / 2)
+                        .height(5.dp)
                         .background(Color(0xFFB9B4B2), RoundedCornerShape(2.dp))
                 )
             }
