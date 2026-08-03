@@ -268,6 +268,22 @@ fun MainContent(
 fun ToggleConsoleButton(micSignal: ConsoleSignal, auxSignal: ConsoleSignal, onMicrophone: () -> Unit, onAux: () -> Unit) {
     var resting by remember { mutableStateOf(false) }
 
+    // Note(yoochan.kim): a silent desk is a fault, not a neutral — and a press
+    // would never reach it anyway
+    if (!micSignal.known && !auxSignal.known) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = Layout.consoleButtonPaddingV)
+                .background(Color(0xFF2A1010), RoundedCornerShape(10.dp))
+                .padding(vertical = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("콘솔 응답 없음", color = Color(0xFFE05B5B), fontSize = Layout.consoleButtonText)
+        }
+        return
+    }
+
     Row(modifier = Modifier.fillMaxWidth()) {
         ConsoleButton(
             label = if (micSignal.known && micSignal.on) "마이크 켜져 있음" else "마이크 켜기",
