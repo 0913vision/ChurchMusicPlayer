@@ -275,11 +275,11 @@ fun ToggleConsoleButton(micSignal: ConsoleSignal, auxSignal: ConsoleSignal, onMi
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = Layout.consoleButtonPaddingV)
-                .background(Color(0xFF2A1010), RoundedCornerShape(10.dp))
+                .background(Color(0xFF262425), RoundedCornerShape(10.dp))
                 .padding(vertical = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text("콘솔 응답 없음", color = Color(0xFFE05B5B), fontSize = Layout.consoleButtonText)
+            Text("음향 장비 응답 없음", color = Color(0xFF9E9894), fontSize = Layout.consoleButtonText)
         }
         return
     }
