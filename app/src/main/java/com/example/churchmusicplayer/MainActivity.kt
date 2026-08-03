@@ -364,25 +364,28 @@ fun ConnectionStatusBar(status: ConnectionStatus, onReconnectClick: () -> Unit, 
             )
         }
 
-        Button(
-            onClick = {
-                if (isButtonEnabled) {
-                    onReconnectClick()
-                    isButtonEnabled = false
-                }
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF302E2F)),
-            shape = RoundedCornerShape(10.dp),
-            contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
-            enabled = isButtonEnabled
-        ) {
-            Text("다시 연결하기", fontSize = Layout.reconnectText)
-        }
+        // Note(yoochan.kim): the button appears only when it could help
+        if (status is ConnectionStatus.Disconnected || status is ConnectionStatus.Error) {
+            Button(
+                onClick = {
+                    if (isButtonEnabled) {
+                        onReconnectClick()
+                        isButtonEnabled = false
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF302E2F)),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
+                enabled = isButtonEnabled
+            ) {
+                Text("다시 연결하기", fontSize = Layout.reconnectText)
+            }
 
-        if (!isButtonEnabled) {
-            LaunchedEffect(Unit) {
-                delay(BUTTON_COOLDOWN_MS)
-                isButtonEnabled = true
+            if (!isButtonEnabled) {
+                LaunchedEffect(Unit) {
+                    delay(BUTTON_COOLDOWN_MS)
+                    isButtonEnabled = true
+                }
             }
         }
     }
