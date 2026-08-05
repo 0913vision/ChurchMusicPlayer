@@ -1,9 +1,17 @@
 package com.example.churchmusicplayer.ui
 
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/**
+ * The app's own zoom. Type follows it through the density's fontScale; the few
+ * controls that should grow with the type — the record, the fader — read it
+ * from here and multiply their own sizes.
+ */
+val LocalUiScale = compositionLocalOf { 1f }
 
 /**
  * Sizes chosen by window width, not by build variant.
@@ -49,7 +57,7 @@ data class LayoutSpec(
     val overlayHelpLineHeight: TextUnit,
     val overlayHelpIcon: Dp,
     val overlayHelpIconGap: Dp,
-    val overlayHelpIconTop: Dp,
+    val overlayActionPaddingV: Dp,
     val footerText: TextUnit,
 )
 
@@ -87,7 +95,7 @@ private val COMPACT = LayoutSpec(
     overlayHelpLineHeight = 23.sp,
     overlayHelpIcon = 19.dp,
     overlayHelpIconGap = 9.dp,
-    overlayHelpIconTop = 2.dp,
+    overlayActionPaddingV = 15.dp,
     footerText = 15.sp,
 )
 
@@ -125,7 +133,7 @@ private val MEDIUM = LayoutSpec(
     overlayHelpLineHeight = 32.sp,
     overlayHelpIcon = 26.dp,
     overlayHelpIconGap = 13.dp,
-    overlayHelpIconTop = 3.dp,
+    overlayActionPaddingV = 22.dp,
     footerText = 22.sp,
 )
 
@@ -163,7 +171,7 @@ private val EXPANDED = LayoutSpec(
     overlayHelpLineHeight = 32.sp,
     overlayHelpIcon = 26.dp,
     overlayHelpIconGap = 13.dp,
-    overlayHelpIconTop = 3.dp,
+    overlayActionPaddingV = 20.dp,
     footerText = 20.sp,
 )
 
@@ -212,6 +220,6 @@ object Layout {
     val overlayHelpLineHeight get() = spec.overlayHelpLineHeight
     val overlayHelpIcon get() = spec.overlayHelpIcon
     val overlayHelpIconGap get() = spec.overlayHelpIconGap
-    val overlayHelpIconTop get() = spec.overlayHelpIconTop
+    val overlayActionPaddingV get() = spec.overlayActionPaddingV
     val footerText get() = spec.footerText
 }

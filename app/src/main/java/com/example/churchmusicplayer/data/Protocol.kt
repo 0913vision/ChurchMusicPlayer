@@ -143,7 +143,7 @@ enum class RejectReason(val wire: String, val message: String) {
     NOT_WRITABLE("notWritable", "바꿀 수 없어요"),
     INVALID_VALUE("invalidValue", "값이 올바르지 않아요"),
     UNKNOWN_TARGET("unknownTarget", "서버가 모르는 요청이에요"),
-    PROTOCOL_MISMATCH("protocolMismatch", "어플을 업데이트해 주세요"),
+    PROTOCOL_MISMATCH("protocolMismatch", "앱을 업데이트해 주세요"),
     UNKNOWN("", "요청이 거부됐어요");
 
     companion object {

@@ -87,7 +87,7 @@ class SocketManager {
             _ready.value = ServerInfo.from(payload)
             _connectionStatus.value =
                 if (ServerInfo.from(payload).accepted) ConnectionStatus.Connected
-                else ConnectionStatus.Error("서버와 버전이 맞지 않습니다. 앱 업데이트가 필요합니다")
+                else ConnectionStatus.Outdated
         }
 
         socket.on(Protocol.S2C.STATE) { args ->
@@ -244,4 +244,7 @@ sealed interface ConnectionStatus {
     data object Disconnected : ConnectionStatus
     data class GracePeriod(val startTime: Long) : ConnectionStatus
     data class Error(val message: String) : ConnectionStatus
+
+    /** The server refused this version; reconnecting cannot fix it, only an update can. */
+    data object Outdated : ConnectionStatus
 }

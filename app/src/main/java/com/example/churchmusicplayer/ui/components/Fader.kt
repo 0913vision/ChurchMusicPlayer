@@ -19,6 +19,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import com.example.churchmusicplayer.ui.Layout
+import com.example.churchmusicplayer.ui.LocalUiScale
 import kotlin.math.roundToInt
 
 @Composable
@@ -32,6 +33,9 @@ fun Fader(
     var thumbHeight by remember { mutableStateOf(0) }
     var isDragging by remember { mutableStateOf(false) }
     var dragOffset by remember { mutableStateOf(0f) }
+    // Note(yoochan.kim): the fader grows with the app zoom; the drag maths are
+    // safe because they use the measured pixel sizes
+    val uiScale = LocalUiScale.current
 
     Box(
         modifier = modifier
@@ -45,7 +49,7 @@ fun Fader(
         // Fader track
         Box(
             modifier = Modifier
-                .width(Layout.faderTrackWidth)
+                .width(Layout.faderTrackWidth * uiScale)
                 .fillMaxHeight()
                 .align(Alignment.Center)
                 .background(Color.DarkGray)
@@ -60,8 +64,8 @@ fun Fader(
 
         Card(
             modifier = Modifier
-                .width(Layout.faderThumbWidth)
-                .height(Layout.faderThumbHeight)
+                .width(Layout.faderThumbWidth * uiScale)
+                .height(Layout.faderThumbHeight * uiScale)
 //                .shadow(1.dp)
                 .align(Alignment.TopCenter)
                 .offset { IntOffset(0, thumbOffset.roundToInt()) }
@@ -99,7 +103,7 @@ fun Fader(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Box(
                     Modifier
-                        .width(Layout.faderThumbWidth / 2)
+                        .width(Layout.faderThumbWidth * uiScale / 2)
                         .height(5.dp)
                         .background(Color(0xFFB9B4B2), RoundedCornerShape(2.dp))
                 )

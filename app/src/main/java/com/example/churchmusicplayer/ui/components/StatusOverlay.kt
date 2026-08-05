@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.churchmusicplayer.data.FlowStatus
 import com.example.churchmusicplayer.data.Helpline
@@ -56,7 +58,11 @@ data class OverlayNotice(
     val tone: OverlayTone,
     val headline: String,
     val note: String,
+    val action: OverlayAction? = null,
 )
+
+/** The one thing pressing would actually help, when there is one. */
+data class OverlayAction(val label: String, val onClick: () -> Unit)
 
 // The shutter's own colours. Nothing new is introduced: amber and red are the
 // two lamps the connection bar already uses.
@@ -80,6 +86,17 @@ fun disconnectedNotice(): OverlayNotice = OverlayNotice(
 )
 
 /**
+ * The server refused this version. Reconnecting cannot help, so the notice
+ * carries the one act that can: the download link the media server relays.
+ */
+fun outdatedNotice(onDownload: () -> Unit): OverlayNotice = OverlayNotice(
+    tone = OverlayTone.FAULT,
+    headline = "앱이 오래됐어요",
+    note = "새 버전을 받아 설치해 주세요.",
+    action = OverlayAction("새 버전 받기", onDownload),
+)
+
+/**
  * The admin gate is closed, said in the only terms that mean anything here.
  *
  * The server distinguishes a scheduled run from a hand-closed gate, and within
@@ -93,19 +110,15 @@ fun disconnectedNotice(): OverlayNotice = OverlayNotice(
  * still waiting, a run playing music whose end is not the gate's end — has no
  * time that would be true, so it promises nothing more than "when it is over".
  */
-fun lockedNotice(flow: FlowStatus): OverlayNotice {
+fun lockedNotice(flow: FlowStatus, onDownload: () -> Unit): OverlayNotice {
     val booth = { note: String -> OverlayNotice(OverlayTone.HELD, "방송실에서 사용 중이에요", note) }
     return when (flow) {
         is FlowStatus.Holding -> booth("${clockOf(flow.unlockAt)}에 다시 사용할 수 있어요.")
         FlowStatus.Idle, is FlowStatus.Waiting, is FlowStatus.Playing ->
             booth("끝나면 다시 사용할 수 있어요.")
         // A phase this build does not know means the server is newer than the
-        // app. That is a fault, not a schedule, and it is shown as one.
-        FlowStatus.Unknown -> OverlayNotice(
-            tone = OverlayTone.FAULT,
-            headline = "어플이 오래됐어요",
-            note = "최신 버전으로 업데이트해 주세요.",
-        )
+        // app — the same situation a refused handshake names, shown the same way.
+        FlowStatus.Unknown -> outdatedNotice(onDownload)
     }
 }
 
@@ -168,6 +181,36 @@ fun BoxScope.StatusOverlay(notice: OverlayNotice, helpline: Helpline) {
                 )
                 Helpline(helpline)
             }
+            notice.action?.let { action -> ActionRow(action) }
+        }
+    }
+}
+
+/**
+ * The action as the band's own bottom row: the label starts on the same left
+ * margin as the text above, and the surface runs the full width — nothing
+ * floats, and the chevron at the far edge says "press to go".
+ */
+@Composable
+private fun ActionRow(action: OverlayAction) {
+    Column(Modifier.fillMaxWidth().background(BAND)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.12f)),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White.copy(alpha = 0.045f))
+                .clickable(onClick = action.onClick)
+                .padding(horizontal = Layout.screenPaddingH, vertical = Layout.overlayActionPaddingV),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(action.label, color = Color.White, fontSize = Layout.overlayNote, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.weight(1f))
+            Text("›", color = Color.White.copy(alpha = 0.5f), fontSize = Layout.overlayNote * 1.2)
         }
     }
 }
@@ -183,33 +226,36 @@ private fun Helpline(helpline: Helpline) {
     if (helpline !is Helpline.Known) return
 
     Spacer(Modifier.height(Layout.overlayHelpGap))
-    Row {
+    // The icon rides the first line's row, so it centers on that line exactly
+    // instead of chasing it with a hand-tuned offset.
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = Icons.Outlined.Info,
             contentDescription = null,
             tint = HELP,
-            modifier = Modifier
-                .padding(top = Layout.overlayHelpIconTop)
-                .size(Layout.overlayHelpIcon),
+            modifier = Modifier.size(Layout.overlayHelpIcon),
         )
         Spacer(Modifier.width(Layout.overlayHelpIconGap))
-        Column {
-            HelpLine("문제가 계속되면 연락해 주세요", FontWeight.Normal)
-            // The number takes weight rather than a fourth colour: the scale
-            // stays three deep and the data still reads first.
-            HelpLine("${helpline.name} ${helpline.phone}", FontWeight.SemiBold)
-        }
+        HelpLine("문제가 발생했나요?", FontWeight.Normal)
     }
+    // The number takes weight rather than a fourth colour: the scale
+    // stays three deep and the data still reads first.
+    HelpLine(
+        "${helpline.name} ${helpline.phone}",
+        FontWeight.SemiBold,
+        Modifier.padding(start = Layout.overlayHelpIcon + Layout.overlayHelpIconGap),
+    )
 }
 
 @Composable
-private fun HelpLine(text: String, weight: FontWeight) {
+private fun HelpLine(text: String, weight: FontWeight, modifier: Modifier = Modifier) {
     Text(
         text,
         color = HELP,
         fontSize = Layout.overlayHelp,
         lineHeight = Layout.overlayHelpLineHeight,
         fontWeight = weight,
+        modifier = modifier,
     )
 }
 
