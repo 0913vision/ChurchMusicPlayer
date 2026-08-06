@@ -12,7 +12,7 @@ package com.example.churchmusicplayer.data
  * owns, which is exactly what v1 set out to remove.
  */
 object Protocol {
-    const val VERSION = 1
+    const val VERSION = 2
 
     /** How this client identifies itself to the server */
     const val CLIENT_NAME = "기도음악 재생 앱"
