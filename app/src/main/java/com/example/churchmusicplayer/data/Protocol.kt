@@ -73,25 +73,13 @@ object Protocol {
 }
 
 /**
- * The songs this screen has buttons for.
+ * A song the user may select.
  *
- * Which ids the app offers is fixed here, because the layout has room for
- * exactly these two and that is a fact about the screen rather than about the
- * server. What the server decides is the other half: whether each one exists
- * and what it is called.
- *
- * A song the server does not list is shown but not selectable. If neither is
- * available there is nothing to play, and the transport is disabled too.
+ * How many there are, what they are called and what order they come in is
+ * entirely the server's answer, arriving in `ready`. The app draws a button per
+ * song it is given, so adding one is a change to the server's manifest and
+ * never a release of this app.
  */
-object Songs {
-    const val CALM = "calm"
-    const val FERVENT = "fervent"
-
-    /** In the order the buttons appear */
-    val OFFERED = listOf(CALM, FERVENT)
-}
-
-/** A song the user may select. The server names these; the app never does. */
 data class Song(val id: String, val title: String)
 
 /**
@@ -107,13 +95,6 @@ sealed interface Helpline {
     data object Unknown : Helpline
     data class Known(val name: String, val phone: String) : Helpline
 }
-
-/**
- * One of the app's song buttons, resolved against what the server offers.
- * Unavailable means the server did not list this id, so it cannot be chosen
- * and the app has no name to show for it.
- */
-data class SongChoice(val id: String, val title: String, val available: Boolean)
 
 /**
  * What the server's flow slot is doing.

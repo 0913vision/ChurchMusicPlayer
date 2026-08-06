@@ -38,19 +38,14 @@ class MainViewModel : ViewModel() {
     val flow: StateFlow<FlowStatus> = state.mapState { readFlow(it) }
 
     /**
-     * The app's two buttons, resolved against the server's catalogue. A song the
-     * server does not offer stays on screen but cannot be chosen, because
-     * silently dropping a button would leave the operator wondering where it went.
+     * A button per song the server offers, in the order it lists them. The app
+     * holds no list of its own, so a song added to the server's manifest shows
+     * up here on the next connection without a release.
      */
-    val songChoices: StateFlow<List<SongChoice>> = ready.mapState { info ->
-        Songs.OFFERED.map { id ->
-            val song = info?.songs?.firstOrNull { it.id == id }
-            SongChoice(id = id, title = song?.title ?: "사용할 수 없음", available = song != null)
-        }
-    }
+    val songChoices: StateFlow<List<Song>> = ready.mapState { info -> info?.songs.orEmpty() }
 
     /** With no song to play, the transport has nothing to do. */
-    val canPlay: StateFlow<Boolean> = songChoices.mapState { choices -> choices.any { it.available } }
+    val canPlay: StateFlow<Boolean> = songChoices.mapState { choices -> choices.isNotEmpty() }
 
     /**
      * Whether the selected song is what is actually sounding.

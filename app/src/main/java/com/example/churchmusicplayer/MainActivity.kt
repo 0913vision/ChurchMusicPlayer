@@ -10,6 +10,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,7 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.churchmusicplayer.data.ConnectionStatus
 import com.example.churchmusicplayer.data.Rejection
-import com.example.churchmusicplayer.data.SongChoice
+import com.example.churchmusicplayer.data.Song
 import com.example.churchmusicplayer.ui.Layout
 import com.example.churchmusicplayer.ui.LocalUiScale
 import com.example.churchmusicplayer.ui.components.Fader
@@ -325,7 +327,7 @@ fun MainContent(
     volume: Int,
     isPlaying: Boolean,
     currentSong: String,
-    songChoices: List<SongChoice>,
+    songChoices: List<Song>,
     songIsLive: Boolean,
     canPlay: Boolean,
     onVolumeChange: (Int) -> Unit,
@@ -567,8 +569,13 @@ fun ConnectionStatusBar(
         }
 
         // Note(yoochan.kim): one slot, two tenants — the gear normally, and the
-        // reconnect button when pressing it could actually help
-        if (status !is ConnectionStatus.Disconnected && status !is ConnectionStatus.Error) {
+        // reconnect button whenever the link is not up. 연결중 counts: a retry
+        // that never lands looks the same as a hang, and waiting it out is not
+        // something to force on someone.
+        val linkDown = status is ConnectionStatus.Disconnected ||
+            status is ConnectionStatus.Error ||
+            status is ConnectionStatus.Connecting
+        if (!linkDown) {
             // Note(yoochan.kim): pushed right past the button's inset and the
             // glyph's own bearing (measured on device), so the visible gear
             // mirrors the status dot's margin
@@ -580,7 +587,7 @@ fun ConnectionStatusBar(
                 )
             }
         }
-        if (status is ConnectionStatus.Disconnected || status is ConnectionStatus.Error) {
+        if (linkDown) {
             Button(
                 onClick = {
                     if (isButtonEnabled) {
@@ -645,22 +652,31 @@ fun RecordVisualization(isPlaying: Boolean, processing: Boolean) {
     }
 }
 
+/**
+ * A button per song the server offers.
+ *
+ * The list is the server's, so its length is not known when this is written:
+ * the column scrolls rather than assuming a count, which is what lets a song be
+ * added to the manifest without anyone installing a new app.
+ */
 @Composable
 fun SongSelection(
     currentSong: String,
-    choices: List<SongChoice>,
+    choices: List<Song>,
     songIsLive: Boolean,
     onSongChange: (String) -> Unit,
     processing: Boolean,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        choices.forEach { choice ->
+        choices.forEach { song ->
             Button(
-                onClick = { onSongChange(choice.id) },
+                onClick = { onSongChange(song.id) },
                 modifier = Modifier
                     .fillMaxWidth(0.9f)
                     .padding(vertical = Layout.songButtonPaddingV),
@@ -670,16 +686,14 @@ fun SongSelection(
                     disabledContentColor = Color.DarkGray,
                 ),
                 shape = RoundedCornerShape(10.dp),
-                // A song the server does not offer cannot be chosen. The button
-                // stays put so the screen does not rearrange itself.
-                enabled = choice.available && !processing
+                enabled = !processing
             ) {
                 // The tick means "this is what you are hearing". While a flow
-                // plays its own track that is true of neither, so neither gets
-                // one.
-                val selected = songIsLive && choice.available && currentSong == choice.id
+                // plays its own track that is true of none of them, so none
+                // gets one.
+                val selected = songIsLive && currentSong == song.id
                 WrappingLabel(
-                    if (selected) "✓ ${choice.title}" else choice.title,
+                    if (selected) "✓ ${song.title}" else song.title,
                     fontSize = Layout.songButtonText,
                 )
             }
