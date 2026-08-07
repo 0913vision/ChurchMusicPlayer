@@ -280,25 +280,23 @@ private fun SettingsDialog(
                         }
                     }
 
-                    SettingsRule()
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showAddress = true }
-                            .padding(vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Spacer(Modifier.width(26.dp))
-                        Text("서버 주소", color = Color(0xFF9E9894), fontSize = 17.sp)
-                        Spacer(Modifier.weight(1f))
-                        Text("›", color = Color(0xFF6B6664), fontSize = 19.sp)
-                    }
                 }
             }
         },
+        // Note(yoochan.kim): the address sits in the far corner, away from the
+        // thing someone actually opened this for
         confirmButton = {
             ScaledByApp(current) {
-                TextButton(onClick = onDismiss) { Text("닫기", color = Color.White) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = { showAddress = true }) {
+                        Text("서버 주소", color = Color(0xFF9E9894))
+                    }
+                    TextButton(onClick = onDismiss) { Text("닫기", color = Color.White) }
+                }
             }
         },
     )
@@ -350,7 +348,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
         },
         dismissButton = {
             ScaledByApp(scale) {
-                TextButton(onClick = onDismiss) { Text("취소", color = Color(0xFF9E9894)) }
+                TextButton(onClick = onDismiss) { Text("취소", color = Color.White) }
             }
         },
     )
