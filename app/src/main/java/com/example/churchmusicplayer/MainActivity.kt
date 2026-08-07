@@ -13,6 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -36,6 +39,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -57,22 +62,31 @@ import com.example.churchmusicplayer.data.ServerAddress
 import com.example.churchmusicplayer.data.Song
 import com.example.churchmusicplayer.ui.Layout
 import com.example.churchmusicplayer.ui.LocalUiScale
+import com.example.churchmusicplayer.ui.unbreakable
+import com.example.churchmusicplayer.ui.weldWords
 import com.example.churchmusicplayer.ui.components.Fader
 import com.example.churchmusicplayer.ui.components.StatusOverlay
 import com.example.churchmusicplayer.ui.components.disconnectedNotice
 import com.example.churchmusicplayer.ui.components.lockedNotice
 import com.example.churchmusicplayer.ui.components.outdatedNotice
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val REJECTION_VISIBLE_MS = 4_000L
 private const val BUTTON_COOLDOWN_MS = 1_000L
 // Note(yoochan.kim): how long a console press waits for the desk before it
 // gives up and lets the button be pressed again
 private const val CONSOLE_PENDING_MS = 6_000L
+// Note(yoochan.kim): long enough that nobody holds it by mistake — it re-sends
+// a switch-on the desk says it does not need
+private const val FORCE_HOLD_MS = 3_000L
 
 // Note(yoochan.kim): the screen's two columns, shared by every row of it
 private const val LEFT_COLUMN = 0.75f
 private const val RIGHT_COLUMN = 1f
+
+/** Between the gear and whatever stands to its left in the status bar */
+private val GEAR_GAP = 10.dp
 
 // Note(yoochan.kim): dialogs are read at the same arm's length as the panel, so
 // they take a size of their own rather than the framework's default
@@ -332,7 +346,7 @@ private fun SettingsDialog(
                     modifier = Modifier.width(32.dp),
                 )
                 Text(
-                    label,
+                    weldWords(label),
                     color = if (selected) Color.White else Color(0xFF9E9894),
                     fontSize = DIALOG_BODY,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
@@ -367,7 +381,7 @@ private fun PanelDialog(
                         vertical = Layout.statusBarPaddingH,
                     ),
                 ) {
-                    Text(title, color = Color.White, fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold)
+                    Text(weldWords(title), color = Color.White, fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Layout.statusBarPaddingH))
                     content()
                     Spacer(Modifier.height(Layout.statusBarPaddingH))
@@ -520,7 +534,7 @@ fun RejectionNotice(rejection: Rejection?, onDismiss: () -> Unit) {
             shape = RoundedCornerShape(10.dp),
         ) {
             Text(
-                rejection.reason.message,
+                weldWords(rejection.reason.message),
                 color = Color.White,
                 fontSize = Layout.reconnectText,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -550,27 +564,49 @@ fun MainContent(
             vertical = Layout.screenPaddingV,
         ),
     ) {
+        // Note(yoochan.kim): two columns, not a grid of four cells. The widths
+        // are shared — the disc stands over the fader, the songs over the
+        // transport — but the heights are each column's own. So a song added to
+        // the list takes its room from the transport beside it, and the fader
+        // is left alone.
         Row(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min)
         ) {
-            // The record is given no size of its own: it fills the box it is
-            // handed, which is what makes the same layout sit correctly on a
-            // phone and on a tablet.
-            Box(
-                modifier = Modifier
-                    .weight(LEFT_COLUMN)
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                RecordVisualization(isPlaying = isPlaying, processing = processing)
+            Column(modifier = Modifier.weight(LEFT_COLUMN)) {
+                // The record is round, so its cell is square — a size it can
+                // work out from the column's width alone, on a phone or a
+                // tablet, without asking what the other column is doing.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    RecordVisualization(isPlaying = isPlaying, processing = processing)
+                }
+
+                // Note(yoochan.kim): the fader takes everything the disc does
+                // not, and keeps a floor besides — a fader too short to aim at
+                // is the one thing on this screen that must not happen.
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .heightIn(min = Layout.faderMinHeight),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Fader(
+                        volume = volume,
+                        onVolumeChange = onVolumeChange,
+                        processing = processing,
+                    )
+                }
             }
 
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
+            Column(modifier = Modifier.weight(RIGHT_COLUMN)) {
                 SongSelection(
                     currentSong = currentSong,
                     choices = songChoices,
@@ -578,42 +614,21 @@ fun MainContent(
                     onSongChange = onSongChange,
                     processing = processing,
                 )
-            }
-        }
 
-        // Note(yoochan.kim): the transport keeps a floor. Left to a bare weight
-        // it gives up whatever grows beneath it, and a fader too short to aim
-        // at is the one thing on this screen that must not happen.
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = Layout.faderMinHeight)
-                .fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(LEFT_COLUMN)
-                    .fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Fader(
-                    volume = volume,
-                    onVolumeChange = onVolumeChange,
-                    processing = processing,
-                )
-            }
-
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                VolumeAndPlayback(
-                    volume = volume,
-                    isPlaying = isPlaying,
-                    onPlaybackToggle = onPlaybackToggle,
-                    processing = processing,
-                    canPlay = canPlay,
-                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    VolumeAndPlayback(
+                        volume = volume,
+                        isPlaying = isPlaying,
+                        onPlaybackToggle = onPlaybackToggle,
+                        processing = processing,
+                        canPlay = canPlay,
+                    )
+                }
             }
         }
 
@@ -636,6 +651,8 @@ fun MainContent(
  */
 @Composable
 fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) {
+    val tap = rememberTap()
+    val say = rememberToast()
     // Note(yoochan.kim): the input this panel just asked for. It stays pending
     // until the desk answers, rather than for a fixed second — a timer shorter
     // than the desk's reply flashes the button back to "off" on the way to
@@ -711,6 +728,14 @@ fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) 
                         // yet — so it says nothing.
                         alert = input.known && !input.on && !waiting,
                         modifier = Modifier.weight(if (index == 0) LEFT_COLUMN else RIGHT_COLUMN),
+                        // Note(yoochan.kim): nothing on screen will change — the
+                        // desk already said on — so the press has to answer for
+                        // itself.
+                        onForce = {
+                            tap()
+                            say("${input.label} 켜기를 다시 보냈어요")
+                            onEnable(input.id)
+                        },
                     ) {
                         onEnable(input.id)
                         pending = input.id
@@ -722,6 +747,14 @@ fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) 
     }
 }
 
+/**
+ * @param onForce sending the desk the switch-on again although it already
+ *   reports the input as on. Held for [FORCE_HOLD_MS] rather than tapped: the
+ *   button is disabled in that state on purpose, and a press that long is
+ *   nobody's accident. What it is for is a desk whose answer and whose sound
+ *   disagree — someone moved a fader by hand, and the panel can put its own
+ *   levels back without anyone walking to the booth.
+ */
 @Composable
 private fun ConsoleButton(
     label: String,
@@ -729,11 +762,30 @@ private fun ConsoleButton(
     enabled: Boolean,
     alert: Boolean,
     modifier: Modifier = Modifier,
+    onForce: () -> Unit,
     onClick: () -> Unit,
 ) {
     val tap = rememberTap()
     Button(
-        modifier = modifier.padding(vertical = Layout.consoleButtonPaddingV),
+        modifier = modifier
+            .padding(vertical = Layout.consoleButtonPaddingV)
+            // Note(yoochan.kim): a disabled button still swallows the press —
+            // it just does nothing with it — so this watches the Initial pass,
+            // which every node sees before its children get a say. Nothing is
+            // consumed here: the hold only observes.
+            .pointerInput(enabled) {
+                if (enabled) return@pointerInput
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val letGo = withTimeoutOrNull(FORCE_HOLD_MS) {
+                        waitForUpOrCancellation(PointerEventPass.Initial)
+                    }
+                    if (letGo == null) {
+                        onForce()
+                        waitForUpOrCancellation(PointerEventPass.Initial)
+                    }
+                }
+            },
         onClick = {
             if (enabled) {
                 tap()
@@ -743,8 +795,11 @@ private fun ConsoleButton(
         colors = ButtonDefaults.buttonColors(
             // Note(yoochan.kim): red is the desk saying this input is off
             containerColor = if (alert) Color(0xFF3B0404) else Color(0xFF302E2F),
+            // Note(yoochan.kim): the sunken face is what says "no press here";
+            // the words on it are a reading of the desk and stay legible. Grey
+            // text on a grey button reads as broken rather than as settled.
             disabledContainerColor = Color(0xFF262425),
-            disabledContentColor = Color.DarkGray,
+            disabledContentColor = Color(0xFF9E9894),
         ),
         shape = RoundedCornerShape(10.dp),
         contentPadding = PaddingValues(vertical = 6.dp, horizontal = 8.dp),
@@ -761,14 +816,6 @@ private fun ConsoleButton(
     }
 }
 
-// Note(yoochan.kim): zoomed text may no longer fit its button — it wraps at
-// spaces only, centered. Word joiners weld each word's characters together,
-// because Korean otherwise breaks mid-word and the proper line-break config
-// only exists on API 33+.
-@Composable
-/** One chunk the line breaker may not open up, however many words are in it. */
-private fun unbreakable(text: String): String = text.replace(' ', ' ')
-
 @Composable
 private fun WrappingLabel(
     text: String,
@@ -777,9 +824,7 @@ private fun WrappingLabel(
     modifier: Modifier = Modifier,
     transparent: Boolean = false,
 ) {
-    val welded = remember(text) {
-        text.split(" ").joinToString(" ") { word -> word.toCharArray().joinToString("⁠") }
-    }
+    val welded = remember(text) { weldWords(text) }
     Text(
         welded,
         fontSize = fontSize,
@@ -875,13 +920,14 @@ fun ConnectionStatusBar(
             }
             // Note(yoochan.kim): the gear never leaves. It is how someone
             // reaches the panel's own settings, and hiding it while the link is
-            // down would strand a device exactly when it needs attention. A
-            // plain box rather than an icon button, whose 48dp minimum would
-            // hold it away from the button beside it.
-            Spacer(Modifier.width(12.dp))
+            // down would strand a device exactly when it needs attention.
+            // Its box is the glyph plus the gap it needs, and no wider — a
+            // square one would push the button beside it half a finger away.
+            val gear = Layout.statusBarHeight * 0.62f
             Box(
                 modifier = Modifier
-                    .size(Layout.statusBarHeight)
+                    .height(Layout.statusBarHeight)
+                    .width(gear + GEAR_GAP)
                     .quietClickable { onOpenScale() },
                 contentAlignment = Alignment.CenterEnd,
             ) {
@@ -889,7 +935,7 @@ fun ConnectionStatusBar(
                     imageVector = Icons.Filled.Settings,
                     contentDescription = "설정",
                     tint = Color(0xFF9E9894),
-                    modifier = Modifier.size(Layout.statusBarHeight * 0.62f),
+                    modifier = Modifier.size(gear),
                 )
             }
         }
@@ -951,12 +997,12 @@ fun SongSelection(
     processing: Boolean,
 ) {
     val tap = rememberTap()
-    // Note(yoochan.kim): every button is as tall as the longest name needs, so
-    // the row of them holds still whatever is chosen.
-    val longest = remember(choices) { choices.maxByOrNull { it.title.length }?.title ?: "" }
+    // Note(yoochan.kim): the list is as tall as the songs make it, not as tall
+    // as the space allows — what it leaves is the transport's. It still scrolls,
+    // for the day someone puts more songs in the manifest than the screen holds.
     Column(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -1005,16 +1051,10 @@ fun SongSelection(
                     // of what the tick leaves. Centring the block would move
                     // that place whenever a name wrapped to another line.
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        // The longest name in the list is drawn invisibly under
-                        // every button, so they are all as tall as the tallest
-                        // from the first frame and none of them resizes later.
-                        WrappingLabel(
-                            longest,
-                            fontSize = Layout.songButtonText,
-                            align = TextAlign.Start,
-                            modifier = Modifier.fillMaxWidth(),
-                            transparent = true,
-                        )
+                        // Note(yoochan.kim): a song button is as tall as its own
+                        // name needs. Only the console pair holds a common
+                        // height, where one saying more than the other would
+                        // read as the two being different kinds of thing.
                         WrappingLabel(
                             song.title,
                             fontSize = Layout.songButtonText,
@@ -1046,6 +1086,9 @@ fun VolumeAndPlayback(
         // zoom at half speed — 1.3 on everything else is ~1.15 here
         val uiScale = LocalUiScale.current
         val damped = (1f + (uiScale - 1f) / 2f) / uiScale
+        // Note(yoochan.kim): the key keeps pace with the number above it, at
+        // four fifths of its growth, so the pair still reads as one control
+        val transportScale = 1f + (uiScale - 1f) / 2f * 0.8f
         Text(
             text = volume.toString(),
             style = MaterialTheme.typography.displayLarge.copy(fontSize = Layout.volumeText * damped),
@@ -1058,7 +1101,7 @@ fun VolumeAndPlayback(
                 tap()
                 onPlaybackToggle()
             },
-            modifier = Modifier.size(Layout.playButtonSize),
+            modifier = Modifier.size(Layout.playButtonSize * transportScale),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF302E2F),
                 disabledContainerColor = Color(0xFF302E2F),
@@ -1072,7 +1115,7 @@ fun VolumeAndPlayback(
             Icon(
                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                 contentDescription = if (isPlaying) "Pause" else "Play",
-                modifier = Modifier.size(Layout.playIconSize),
+                modifier = Modifier.size(Layout.playIconSize * transportScale),
                 tint = if (canPlay && !processing) Color.White else Color.Gray
             )
         }

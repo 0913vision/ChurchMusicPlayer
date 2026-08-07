@@ -14,12 +14,16 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Icon
@@ -35,12 +39,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.churchmusicplayer.data.FlowStatus
 import com.example.churchmusicplayer.data.Helpline
 import com.example.churchmusicplayer.ui.Layout
+import com.example.churchmusicplayer.ui.weldWords
 
 /**
  * Whether the panel is being held on purpose or has broken.
@@ -57,8 +69,19 @@ data class OverlayNotice(
     val tone: OverlayTone,
     val headline: String,
     val note: String,
+    /** What a [BUTTON_SLOT] in the note stands for, when the note has one */
+    val noteButton: String? = null,
     val action: OverlayAction? = null,
 )
+
+/**
+ * Stands in a sentence for a button that is really on screen.
+ *
+ * Naming a control in brackets asks the reader to match a string to a thing
+ * they are looking at; showing the control asks them to match a picture. The
+ * slot is drawn as a small copy of the button itself.
+ */
+const val BUTTON_SLOT = "{button}"
 
 /** The one thing pressing would actually help, when there is one. */
 data class OverlayAction(val label: String, val onClick: () -> Unit)
@@ -77,6 +100,14 @@ private val FAULT_EDGE = Color(0xFFF44336)
 private val NOTE = Color.White.copy(alpha = 0.68f)
 private val HELP = Color.White.copy(alpha = 0.50f)
 
+// The reconnect button's own fill, borrowed so the copy in the sentence is the
+// same object the reader is being pointed at. Two kinds of room: PAD is inside
+// the chip, MARGIN keeps it off the words on either side.
+private val BUTTON_FILL = Color(0xFF302E2F)
+private val CHIP_PAD_H = 3.dp
+private val CHIP_PAD_V = 4.dp
+private val CHIP_MARGIN_H = 5.dp
+
 /**
  * The connection is gone.
  *
@@ -89,7 +120,8 @@ private val HELP = Color.White.copy(alpha = 0.50f)
 fun disconnectedNotice(onAddress: () -> Unit): OverlayNotice = OverlayNotice(
     tone = OverlayTone.FAULT,
     headline = "연결이 끊겼어요",
-    note = "와이파이가 켜져 있는지 확인해 주세요.\n위쪽 [다시 연결하기]를 눌러도 좋아요.",
+    note = "와이파이가 켜져 있는지 확인해 주세요.\n위쪽 ${BUTTON_SLOT}를 눌러 주세요.",
+    noteButton = "다시 연결하기",
     action = OverlayAction("서버 주소", onAddress),
 )
 
@@ -181,16 +213,69 @@ fun BoxScope.StatusOverlay(notice: OverlayNotice, helpline: Helpline) {
             ) {
                 Headline(notice.headline)
                 Spacer(Modifier.height(Layout.overlayNoteGap))
-                Text(
-                    notice.note,
-                    color = NOTE,
-                    fontSize = Layout.overlayNote,
-                    lineHeight = Layout.overlayNoteLineHeight,
-                )
+                Note(notice.note, notice.noteButton)
                 Helpline(helpline)
             }
             notice.action?.let { action -> ActionRow(action) }
         }
+    }
+}
+
+/**
+ * The sentence under the headline.
+ *
+ * Words are welded so a line never breaks inside one, and where the note names
+ * a button, the button itself is set into the line — measured first, so the gap
+ * left for it is exactly the size of the thing that goes in it.
+ */
+@Composable
+private fun Note(note: String, button: String?) {
+    if (button == null || !note.contains(BUTTON_SLOT)) {
+        Text(
+            weldWords(note),
+            color = NOTE,
+            fontSize = Layout.overlayNote,
+            lineHeight = Layout.overlayNoteLineHeight,
+        )
+        return
+    }
+
+    val chipStyle = TextStyle(fontSize = Layout.overlayNote * 0.86f, fontWeight = FontWeight.SemiBold)
+    val measurer = rememberTextMeasurer()
+    val measured = measurer.measure(AnnotatedString(button), chipStyle)
+    val density = LocalDensity.current
+    val slot = with(density) {
+        Placeholder(
+            width = (measured.size.width + (CHIP_PAD_H + CHIP_MARGIN_H).roundToPx() * 2).toSp(),
+            height = (measured.size.height + CHIP_PAD_V.roundToPx() * 2).toSp(),
+            placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+        )
+    }
+
+    Text(
+        buildAnnotatedString {
+            append(weldWords(note.substringBefore(BUTTON_SLOT)))
+            appendInlineContent(BUTTON_SLOT, button)
+            append(weldWords(note.substringAfter(BUTTON_SLOT)))
+        },
+        color = NOTE,
+        fontSize = Layout.overlayNote,
+        lineHeight = Layout.overlayNoteLineHeight,
+        inlineContent = mapOf(BUTTON_SLOT to InlineTextContent(slot) { ButtonChip(button, chipStyle) }),
+    )
+}
+
+/** The reconnect button, small enough to sit in a sentence and still be itself. */
+@Composable
+private fun ButtonChip(label: String, style: TextStyle) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = CHIP_MARGIN_H)
+            .background(BUTTON_FILL, RoundedCornerShape(7.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = style, color = Color.White)
     }
 }
 
@@ -216,7 +301,7 @@ private fun ActionRow(action: OverlayAction) {
                 .padding(horizontal = Layout.screenPaddingH, vertical = Layout.overlayActionPaddingV),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(action.label, color = Color.White, fontSize = Layout.overlayNote, fontWeight = FontWeight.SemiBold)
+            Text(weldWords(action.label), color = Color.White, fontSize = Layout.overlayNote, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Text("›", color = Color.White.copy(alpha = 0.5f), fontSize = Layout.overlayNote * 1.2)
         }
@@ -258,7 +343,7 @@ private fun Helpline(helpline: Helpline) {
 @Composable
 private fun HelpLine(text: String, weight: FontWeight, modifier: Modifier = Modifier) {
     Text(
-        text,
+        weldWords(text),
         color = HELP,
         fontSize = Layout.overlayHelp,
         lineHeight = Layout.overlayHelpLineHeight,
@@ -278,7 +363,7 @@ private fun HelpLine(text: String, weight: FontWeight, modifier: Modifier = Modi
 private fun Headline(text: String) {
     var size by remember(text) { mutableStateOf(Layout.overlayHeadline) }
     Text(
-        text,
+        weldWords(text),
         color = Color.White,
         fontSize = size,
         lineHeight = Layout.overlayHeadlineLineHeight,
