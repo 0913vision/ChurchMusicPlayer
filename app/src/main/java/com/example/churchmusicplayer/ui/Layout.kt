@@ -37,6 +37,10 @@ data class LayoutSpec(
     val faderTrackWidth: Dp,
     val faderThumbWidth: Dp,
     val faderThumbHeight: Dp,
+    /** Air above and below the travel, so the ends do not read as broken */
+    val faderPaddingV: Dp,
+    /** The transport never gives up more than this, whatever grows below it */
+    val faderMinHeight: Dp,
     val consoleButtonText: TextUnit,
     val consoleButtonGap: Dp,
     val consoleButtonPaddingV: Dp,
@@ -75,6 +79,8 @@ private val COMPACT = LayoutSpec(
     faderTrackWidth = 15.dp,
     faderThumbWidth = 90.dp,
     faderThumbHeight = 60.dp,
+    faderPaddingV = 18.dp,
+    faderMinHeight = 260.dp,
     consoleButtonText = 20.sp,
     consoleButtonGap = 20.dp,
     consoleButtonPaddingV = 4.dp,
@@ -113,6 +119,8 @@ private val MEDIUM = LayoutSpec(
     faderTrackWidth = 24.dp,
     faderThumbWidth = 130.dp,
     faderThumbHeight = 88.dp,
+    faderPaddingV = 26.dp,
+    faderMinHeight = 380.dp,
     consoleButtonText = 30.sp,
     consoleButtonGap = 28.dp,
     consoleButtonPaddingV = 10.dp,
@@ -151,6 +159,8 @@ private val EXPANDED = LayoutSpec(
     faderTrackWidth = 28.dp,
     faderThumbWidth = 150.dp,
     faderThumbHeight = 100.dp,
+    faderPaddingV = 28.dp,
+    faderMinHeight = 420.dp,
     consoleButtonText = 34.sp,
     consoleButtonGap = 28.dp,
     consoleButtonPaddingV = 8.dp,
@@ -200,6 +210,8 @@ object Layout {
     val faderTrackWidth get() = spec.faderTrackWidth
     val faderThumbWidth get() = spec.faderThumbWidth
     val faderThumbHeight get() = spec.faderThumbHeight
+    val faderPaddingV get() = spec.faderPaddingV
+    val faderMinHeight get() = spec.faderMinHeight
     val consoleButtonText get() = spec.consoleButtonText
     val consoleButtonGap get() = spec.consoleButtonGap
     val consoleButtonPaddingV get() = spec.consoleButtonPaddingV

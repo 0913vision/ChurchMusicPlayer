@@ -1,6 +1,7 @@
 package com.example.churchmusicplayer
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.churchmusicplayer.data.*
 import kotlinx.coroutines.FlowPreview
@@ -12,8 +13,10 @@ import org.json.JSONObject
 private const val VOLUME_WRITE_INTERVAL_MS = 80L
 
 @OptIn(FlowPreview::class)
-class MainViewModel : ViewModel() {
-    private val socketManager = SocketManager()
+class MainViewModel(app: Application) : AndroidViewModel(app) {
+    // Note(yoochan.kim): the address is a setting on this device, not a fact
+    // about the app — see ServerAddress
+    private val socketManager = SocketManager(ServerAddress.of(app))
 
     val connectionStatus = socketManager.connectionStatus
     val rejection = socketManager.rejection
@@ -68,9 +71,12 @@ class MainViewModel : ViewModel() {
     val consoleAvailable: StateFlow<Boolean> =
         ready.mapState { it?.supportsCommand(Protocol.Command.ENABLE_CONSOLE_INPUT) == true }
 
-    /** The desk's own answer: on gets no second press, off gets the red signal. */
-    val micSignal: StateFlow<ConsoleSignal> = state.mapState { readConsoleSignal(it, Protocol.ConsoleInput.MIC) }
-    val auxSignal: StateFlow<ConsoleSignal> = state.mapState { readConsoleSignal(it, Protocol.ConsoleInput.AUX) }
+    /**
+     * The inputs the desk offers, named by the server and in its order — the app
+     * holds no list of its own, so rewiring or renaming one at the church never
+     * means reinstalling this app.
+     */
+    val consoleInputs: StateFlow<List<ConsoleInput>> = state.mapState { readConsoleInputs(it) }
 
     // Note(yoochan.kim): a drag fires per pixel; the device wants only the latest
     private val volumeWrites = MutableSharedFlow<Int>(
@@ -106,11 +112,7 @@ class MainViewModel : ViewModel() {
         socketManager.write(Protocol.Attribute.SONG, songId)
     }
 
-    fun enableMicrophone() = enableConsoleInput(Protocol.ConsoleInput.MIC)
-
-    fun enableAux() = enableConsoleInput(Protocol.ConsoleInput.AUX)
-
-    private fun enableConsoleInput(input: String) {
+    fun enableConsoleInput(input: String) {
         socketManager.invoke(
             Protocol.Command.ENABLE_CONSOLE_INPUT,
             JSONObject().put("input", input),
@@ -137,13 +139,33 @@ class MainViewModel : ViewModel() {
  * it becomes Unknown and is shown as such. Treating it as idle would tell the
  * operator nothing is running while a service is under way.
  */
-/** One console input as the desk answered it; known is false while it is silent. */
-data class ConsoleSignal(val known: Boolean = false, val on: Boolean = false)
+/**
+ * One console input as the server describes it: its id, the name to show, and
+ * what the desk last answered. `known` is false while the desk is silent, which
+ * is a different thing from being off.
+ */
+data class ConsoleInput(
+    val id: String,
+    val label: String,
+    val known: Boolean = false,
+    val on: Boolean = false,
+)
 
-private fun readConsoleSignal(state: JSONObject, input: String): ConsoleSignal {
-    val read = state.optJSONObject(Protocol.Attribute.CONSOLE)?.optJSONObject(input) ?: return ConsoleSignal()
-    if (read.optString("kind") != "read") return ConsoleSignal()
-    return ConsoleSignal(known = true, on = read.optBoolean("on"))
+private fun readConsoleInputs(state: JSONObject): List<ConsoleInput> {
+    val inputs = state.optJSONArray(Protocol.Attribute.CONSOLE) ?: return emptyList()
+    return (0 until inputs.length()).mapNotNull { index ->
+        val entry = inputs.optJSONObject(index) ?: return@mapNotNull null
+        val id = entry.optString("id")
+        if (id.isEmpty()) return@mapNotNull null
+        val read = entry.optJSONObject("state")
+        val known = read?.optString("kind") == "read"
+        ConsoleInput(
+            id = id,
+            label = entry.optString("label").ifEmpty { id },
+            known = known,
+            on = known && read!!.optBoolean("on"),
+        )
+    }
 }
 
 private fun readFlow(state: JSONObject): FlowStatus {

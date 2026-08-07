@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.churchmusicplayer.data.ConnectionStatus
 import com.example.churchmusicplayer.data.Rejection
+import com.example.churchmusicplayer.data.ServerAddress
 import com.example.churchmusicplayer.data.Song
 import com.example.churchmusicplayer.ui.Layout
 import com.example.churchmusicplayer.ui.LocalUiScale
@@ -128,8 +129,7 @@ fun MainScreen(
     val flow by viewModel.flow.collectAsState()
     val helpline by viewModel.helpline.collectAsState()
     val rejection by viewModel.rejection.collectAsState()
-    val micSignal by viewModel.micSignal.collectAsState()
-    val auxSignal by viewModel.auxSignal.collectAsState()
+    val consoleInputs by viewModel.consoleInputs.collectAsState()
 
     Column(
         modifier = Modifier
@@ -174,10 +174,8 @@ fun MainScreen(
                 onPlaybackToggle = { viewModel.togglePlayback() },
                 onSongChange = { viewModel.changeSong(it) },
                 processing = processing,
-                micSignal = micSignal,
-                auxSignal = auxSignal,
-                onMicrophone = { viewModel.enableMicrophone() },
-                onAux = { viewModel.enableAux() },
+                consoleInputs = consoleInputs,
+                onEnableConsole = { viewModel.enableConsoleInput(it) },
             )
             }
 
@@ -191,7 +189,7 @@ fun MainScreen(
             // is just the address this app already knows plus its own flavor
             val openDownload = {
                 context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SERVER_URL + "apk/" + BuildConfig.FLAVOR))
+                    Intent(Intent.ACTION_VIEW, Uri.parse(ServerAddress.of(context) + "apk/" + BuildConfig.FLAVOR))
                 )
             }
             val disconnected = connectionStatus !is ConnectionStatus.Connected &&
@@ -209,31 +207,46 @@ fun MainScreen(
     RejectionNotice(rejection = rejection, onDismiss = { viewModel.dismissRejection() })
 
     if (showScale) {
-        ScaleDialog(current = uiScale, onPick = onUiScale, onDismiss = { showScale = false })
+        SettingsDialog(
+            current = uiScale,
+            onPick = onUiScale,
+            onDismiss = { showScale = false },
+            onServerChanged = { viewModel.reconnect() },
+        )
     }
 }
 
-/** The app's own zoom, stored on this device — no system setting touches it. */
+/**
+ * This device's own settings: the screen scale, and where the server is.
+ *
+ * Both are stored here rather than built in, because both are facts about this
+ * tablet in this building. The address especially: if it were fixed at build
+ * time, a new router would leave the panel unable to connect and unable to
+ * fetch its own update, with nothing anyone at the church could do.
+ */
 @Composable
-private fun ScaleDialog(current: Float, onPick: (Float) -> Unit, onDismiss: () -> Unit) {
+private fun SettingsDialog(
+    current: Float,
+    onPick: (Float) -> Unit,
+    onDismiss: () -> Unit,
+    onServerChanged: () -> Unit,
+) {
+    val context = LocalContext.current
     val options = listOf("작게" to 0.9f, "보통" to 1.0f, "크게" to 1.1f, "아주 크게" to 1.2f)
+    var address by remember { mutableStateOf(ServerAddress.of(context)) }
+    val valid = ServerAddress.normalize(address) != null
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF2A2829),
         titleContentColor = Color.White,
-        title = { ScaledByApp(current) { Text("화면 배율", fontWeight = FontWeight.Bold) } },
+        title = { ScaledByApp(current) { Text("설정", fontWeight = FontWeight.Bold) } },
         text = {
             ScaledByApp(current) {
                 Column {
+                    SettingsLabel("화면 배율")
                     options.forEachIndexed { index, (label, value) ->
-                        if (index > 0) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .background(Color.White.copy(alpha = 0.10f)),
-                            )
-                        }
+                        if (index > 0) SettingsRule()
                         val selected = kotlin.math.abs(current - value) < 0.01f
                         Row(
                             modifier = Modifier
@@ -262,14 +275,69 @@ private fun ScaleDialog(current: Float, onPick: (Float) -> Unit, onDismiss: () -
                             )
                         }
                     }
+
+                    Spacer(Modifier.height(18.dp))
+                    SettingsLabel("서버 주소")
+                    TextField(
+                        value = address,
+                        onValueChange = { address = it },
+                        singleLine = true,
+                        isError = !valid,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFF262425),
+                            unfocusedContainerColor = Color(0xFF262425),
+                            errorContainerColor = Color(0xFF262425),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        if (valid) "바꾸면 새 주소로 다시 연결해요." else "주소를 확인해 주세요.",
+                        color = if (valid) Color(0xFF9E9894) else Color(0xFFE05B5B),
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    TextButton(onClick = { address = ServerAddress.fromBuild }) {
+                        Text("기본 주소로 되돌리기", color = Color(0xFF9E9894), fontSize = 14.sp)
+                    }
                 }
             }
         },
         confirmButton = {
             ScaledByApp(current) {
-                TextButton(onClick = onDismiss) { Text("닫기", color = Color.White) }
+                TextButton(
+                    enabled = valid,
+                    onClick = {
+                        val previous = ServerAddress.of(context)
+                        ServerAddress.set(context, address)
+                        if (ServerAddress.of(context) != previous) onServerChanged()
+                        onDismiss()
+                    },
+                ) { Text("저장", color = if (valid) Color.White else Color(0xFF6B6664)) }
             }
         },
+        dismissButton = {
+            ScaledByApp(current) {
+                TextButton(onClick = onDismiss) { Text("닫기", color = Color(0xFF9E9894)) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun SettingsLabel(text: String) {
+    Text(text, color = Color(0xFF9E9894), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+}
+
+@Composable
+private fun SettingsRule() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(Color.White.copy(alpha = 0.10f)),
     )
 }
 
@@ -334,10 +402,8 @@ fun MainContent(
     onPlaybackToggle: () -> Unit,
     onSongChange: (String) -> Unit,
     processing: Boolean,
-    micSignal: ConsoleSignal,
-    auxSignal: ConsoleSignal,
-    onMicrophone: () -> Unit,
-    onAux: () -> Unit,
+    consoleInputs: List<ConsoleInput>,
+    onEnableConsole: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier.padding(
@@ -376,9 +442,13 @@ fun MainContent(
             }
         }
 
+        // Note(yoochan.kim): the transport keeps a floor. Left to a bare weight
+        // it gives up whatever grows beneath it, and a fader too short to aim
+        // at is the one thing on this screen that must not happen.
         Row(
             modifier = Modifier
                 .weight(1f)
+                .heightIn(min = Layout.faderMinHeight)
                 .fillMaxWidth()
         ) {
             Box(
@@ -413,18 +483,25 @@ fun MainContent(
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
         ) {
-            ToggleConsoleButton(micSignal = micSignal, auxSignal = auxSignal, onMicrophone = onMicrophone, onAux = onAux)
+            ToggleConsoleButton(inputs = consoleInputs, onEnable = onEnableConsole)
         }
     }
 }
 
+/**
+ * A button per console input the server offers, named as the server names it.
+ *
+ * The list, its length and its labels all belong to the building's wiring, so
+ * they arrive with the state rather than living here — rewiring or renaming an
+ * input is a server change and never a new build of this app.
+ */
 @Composable
-fun ToggleConsoleButton(micSignal: ConsoleSignal, auxSignal: ConsoleSignal, onMicrophone: () -> Unit, onAux: () -> Unit) {
+fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) {
     var resting by remember { mutableStateOf(false) }
 
     // Note(yoochan.kim): a silent desk is a fault, not a neutral — and a press
     // would never reach it anyway
-    if (!micSignal.known && !auxSignal.known) {
+    if (inputs.isEmpty() || inputs.none { it.known }) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -449,25 +526,31 @@ fun ToggleConsoleButton(micSignal: ConsoleSignal, auxSignal: ConsoleSignal, onMi
         return
     }
 
-    Row(modifier = Modifier.fillMaxWidth()) {
-        ConsoleButton(
-            label = if (micSignal.known && micSignal.on) "마이크 켜져 있음" else "마이크 켜기",
-            enabled = !resting && !(micSignal.known && micSignal.on),
-            alert = micSignal.known && !micSignal.on,
-            modifier = Modifier.weight(0.45f),
-        ) {
-            onMicrophone()
-            resting = true
-        }
-        Spacer(modifier = Modifier.width(Layout.consoleButtonGap))
-        ConsoleButton(
-            label = if (auxSignal.known && auxSignal.on) "노래 켜져 있음" else "노래 켜기",
-            enabled = !resting && !(auxSignal.known && auxSignal.on),
-            alert = auxSignal.known && !auxSignal.on,
-            modifier = Modifier.weight(0.45f),
-        ) {
-            onAux()
-            resting = true
+    // Note(yoochan.kim): two to a row whatever the count, so a third input wraps
+    // instead of squeezing the names of the first two. Rows share one gap
+    // between them, so wrapping costs the fader as little height as possible.
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(Layout.consoleButtonPaddingV),
+    ) {
+        inputs.chunked(2).forEach { pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Layout.consoleButtonGap),
+            ) {
+                pair.forEach { input ->
+                    ConsoleButton(
+                        label = if (input.on) "${input.label} 켜져 있음" else "${input.label} 켜기",
+                        enabled = !resting && !input.on,
+                        alert = input.known && !input.on,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        onEnable(input.id)
+                        resting = true
+                    }
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
     }
 

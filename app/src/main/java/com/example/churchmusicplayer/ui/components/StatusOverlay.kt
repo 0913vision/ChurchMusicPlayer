@@ -78,11 +78,17 @@ private val FAULT_EDGE = Color(0xFFF44336)
 private val NOTE = Color.White.copy(alpha = 0.68f)
 private val HELP = Color.White.copy(alpha = 0.50f)
 
-/** The connection is gone. The reconnect button in the bar above still works. */
+/**
+ * The connection is gone.
+ *
+ * Two things are worth trying and the person cannot tell which applies from
+ * here, so both are offered: the panel's own Wi-Fi is the usual culprit, and
+ * the button above covers the rest.
+ */
 fun disconnectedNotice(): OverlayNotice = OverlayNotice(
     tone = OverlayTone.FAULT,
     headline = "연결이 끊겼어요",
-    note = "위쪽 [다시 연결하기]를 눌러 주세요.",
+    note = "와이파이가 켜져 있는지 확인해 주세요.\n위쪽 [다시 연결하기]를 눌러도 좋아요.",
 )
 
 /**

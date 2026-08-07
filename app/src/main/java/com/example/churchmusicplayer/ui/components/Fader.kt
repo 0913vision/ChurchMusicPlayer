@@ -40,7 +40,9 @@ fun Fader(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .padding(vertical=20.dp)
+            // Note(yoochan.kim): the travel needs air at both ends — a thumb
+            // pinned to the very edge reads as broken rather than as loudest
+            .padding(vertical = Layout.faderPaddingV)
 //            .background(Color.Black)
             .onSizeChanged { size ->
                 faderHeight = size.height

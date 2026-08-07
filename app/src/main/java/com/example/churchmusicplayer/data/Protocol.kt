@@ -58,11 +58,6 @@ object Protocol {
         const val UNMUTED = "unmuted"
     }
 
-    object ConsoleInput {
-        const val MIC = "mic"
-        const val AUX = "aux"
-    }
-
     /** Flow phases. An unrecognised one is a fault, not a case — see FlowStatus. */
     object FlowPhase {
         const val IDLE = "idle"
