@@ -133,10 +133,8 @@ class SocketManager(private val serverUrl: String, private val clientName: Strin
         })
     }
 
-    /** Asks for every attribute again, after waking or reconnecting. */
-    fun read() {
-        emit(Protocol.C2S.READ, JSONObject())
-    }
+    // Note(yoochan.kim): no read() here on purpose — the server sends the whole
+    // state right after ready, so connecting is already asking.
 
     private fun emit(event: String, payload: JSONObject) {
         if (::socket.isInitialized) socket.emit(event, payload)

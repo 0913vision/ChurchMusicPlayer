@@ -32,7 +32,6 @@ object Protocol {
     object Attribute {
         const val PLAYBACK = "playback"
         const val VOLUME = "volume"
-        const val MUTE = "mute"
         const val SONG = "song"
         const val ADMIN_LOCK = "adminLock"
         const val AUDIO_LOCK = "audioLock"
@@ -48,11 +47,6 @@ object Protocol {
     object Playback {
         const val PLAYING = "playing"
         const val PAUSED = "paused"
-    }
-
-    object Mute {
-        const val MUTED = "muted"
-        const val UNMUTED = "unmuted"
     }
 
     /** Flow phases. An unrecognised one is a fault, not a case — see FlowStatus. */

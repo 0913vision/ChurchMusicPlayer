@@ -27,8 +27,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val volume: StateFlow<Int> = state.mapState { it.optInt(Protocol.Attribute.VOLUME, 0) }
     val isPlaying: StateFlow<Boolean> =
         state.mapState { it.optString(Protocol.Attribute.PLAYBACK) == Protocol.Playback.PLAYING }
-    val isMuted: StateFlow<Boolean> =
-        state.mapState { it.optString(Protocol.Attribute.MUTE) == Protocol.Mute.MUTED }
     val currentSong: StateFlow<String> = state.mapState { it.optString(Protocol.Attribute.SONG) }
 
     /** The device is mid-transition, so audio writes will be refused. */
@@ -100,11 +98,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun togglePlayback() {
         val next = if (isPlaying.value) Protocol.Playback.PAUSED else Protocol.Playback.PLAYING
         socketManager.write(Protocol.Attribute.PLAYBACK, next)
-    }
-
-    fun toggleMute() {
-        val next = if (isMuted.value) Protocol.Mute.UNMUTED else Protocol.Mute.MUTED
-        socketManager.write(Protocol.Attribute.MUTE, next)
     }
 
     fun changeSong(songId: String) {
