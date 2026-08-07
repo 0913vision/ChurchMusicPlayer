@@ -82,12 +82,15 @@ private val HELP = Color.White.copy(alpha = 0.50f)
  *
  * Two things are worth trying and the person cannot tell which applies from
  * here, so both are offered: the panel's own Wi-Fi is the usual culprit, and
- * the button above covers the rest.
+ * the button above covers the rest. The server's address is the third, rarest
+ * cause — and this is the only screen from which anyone would ever suspect it,
+ * so that is where it can be corrected.
  */
-fun disconnectedNotice(): OverlayNotice = OverlayNotice(
+fun disconnectedNotice(onAddress: () -> Unit): OverlayNotice = OverlayNotice(
     tone = OverlayTone.FAULT,
     headline = "연결이 끊겼어요",
     note = "와이파이가 켜져 있는지 확인해 주세요.\n위쪽 [다시 연결하기]를 눌러도 좋아요.",
+    action = OverlayAction("서버 주소", onAddress),
 )
 
 /**
@@ -228,8 +231,6 @@ private fun ActionRow(action: OverlayAction) {
  */
 @Composable
 private fun Helpline(helpline: Helpline) {
-    if (helpline !is Helpline.Known) return
-
     Spacer(Modifier.height(Layout.overlayHelpGap))
     // The icon rides the first line's row, so it centers on that line exactly
     // instead of chasing it with a hand-tuned offset.
@@ -244,9 +245,11 @@ private fun Helpline(helpline: Helpline) {
         HelpLine("문제가 발생했나요?", FontWeight.Normal)
     }
     // The number takes weight rather than a fourth colour: the scale
-    // stays three deep and the data still reads first.
+    // stays three deep and the data still reads first. A device that has never
+    // reached the server has no number to print, and an empty line where one
+    // belongs reads worse than saying where to go.
     HelpLine(
-        "${helpline.name} ${helpline.phone}",
+        if (helpline is Helpline.Known) "${helpline.name} ${helpline.phone}" else "방송실에 알려 주세요",
         FontWeight.SemiBold,
         Modifier.padding(start = Layout.overlayHelpIcon + Layout.overlayHelpIconGap),
     )

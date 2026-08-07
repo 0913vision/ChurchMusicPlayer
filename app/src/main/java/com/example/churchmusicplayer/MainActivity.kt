@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,9 +35,12 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -45,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.churchmusicplayer.data.ConnectionStatus
 import com.example.churchmusicplayer.data.Rejection
@@ -92,6 +97,17 @@ private fun Modifier.quietClickable(
     )
 }
 
+/**
+ * A press you can feel: the platform's own key tick, the same one a keyboard
+ * gives. Compose's haptic types are advisory and some devices ignore them, so
+ * this goes through the view, where the constant is honoured.
+ */
+@Composable
+private fun rememberTap(): () -> Unit {
+    val view = LocalView.current
+    return { view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY) }
+}
+
 /** Says one thing at a time: a second press replaces the notice, never queues behind it. */
 @Composable
 private fun rememberToast(): (String) -> Unit {
@@ -110,7 +126,7 @@ private val PANEL_SELECTION = TextSelectionColors(
 )
 
 private fun loadUiScale(context: Context): Float =
-    context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE).getFloat(UI_SCALE_KEY, 1f).coerceIn(0.9f, 1.3f)
+    context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE).getFloat(UI_SCALE_KEY, 1f).coerceIn(0.9f, 1.5f)
 
 private fun saveUiScale(context: Context, value: Float) {
     context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE).edit().putFloat(UI_SCALE_KEY, value).apply()
@@ -168,6 +184,7 @@ fun MainScreen(
     Layout.forWidth(LocalConfiguration.current.screenWidthDp)
 
     var showScale by remember { mutableStateOf(false) }
+    var showAddress by remember { mutableStateOf(false) }
 
     val volume by viewModel.volume.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
@@ -248,7 +265,9 @@ fun MainScreen(
                 connectionStatus !is ConnectionStatus.GracePeriod
             when {
                 connectionStatus is ConnectionStatus.Outdated -> StatusOverlay(outdatedNotice(openDownload), helpline)
-                disconnected -> StatusOverlay(disconnectedNotice(), helpline)
+                // Note(yoochan.kim): the address belongs here, not in settings —
+                // a wrong one is only ever discovered from this screen
+                disconnected -> StatusOverlay(disconnectedNotice { showAddress = true }, helpline)
                 adminLocked -> StatusOverlay(lockedNotice(flow, openDownload), helpline)
             }
         }
@@ -259,125 +278,111 @@ fun MainScreen(
     RejectionNotice(rejection = rejection, onDismiss = { viewModel.dismissRejection() })
 
     if (showScale) {
-        SettingsDialog(
-            current = uiScale,
-            onPick = onUiScale,
-            onDismiss = { showScale = false },
-            onServerChanged = { viewModel.reconnect() },
+        SettingsDialog(current = uiScale, onPick = onUiScale, onDismiss = { showScale = false })
+    }
+
+    if (showAddress) {
+        AddressDialog(
+            scale = uiScale,
+            onDismiss = { showAddress = false },
+            onChanged = { viewModel.reconnect() },
         )
     }
 }
 
-/**
- * This device's settings. The scale is what someone here would come looking
- * for; the server address is not, so it sits one step further in — a line that
- * says only what it is, and a window with nothing in it but the address.
- */
-@OptIn(ExperimentalFoundationApi::class)
+/** This device's settings: how big the type is, and nothing else. */
 @Composable
 private fun SettingsDialog(
     current: Float,
     onPick: (Float) -> Unit,
     onDismiss: () -> Unit,
-    onServerChanged: () -> Unit,
 ) {
-    val options = listOf("글자 작게" to 0.9f, "글자 보통" to 1.0f, "글자 크게" to 1.15f, "글자 아주 크게" to 1.3f)
-    var showAddress by remember { mutableStateOf(false) }
+    // Note(yoochan.kim): the top step is for eyes that need it, not a nudge —
+    // half again as large as normal
+    val options = listOf("글자 작게" to 0.9f, "글자 보통" to 1.0f, "글자 크게" to 1.2f, "글자 아주 크게" to 1.5f)
 
-    if (showAddress) {
-        AddressDialog(
-            scale = current,
-            onDismiss = { showAddress = false },
-            onChanged = onServerChanged,
-        )
-        return
+    PanelDialog(scale = current, title = "설정", onDismiss = onDismiss) {
+        options.forEachIndexed { index, (label, value) ->
+            if (index > 0) SettingsRule()
+            val selected = kotlin.math.abs(current - value) < 0.01f
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .quietClickable {
+                        onPick(value)
+                        onDismiss()
+                    }
+                    .padding(vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Note(yoochan.kim): the tick leads the label, like the deck's
+                // song buttons
+                Text(
+                    if (selected) "✓" else "",
+                    color = Color.White,
+                    fontSize = DIALOG_BODY,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.width(32.dp),
+                )
+                Text(
+                    label,
+                    color = if (selected) Color.White else Color(0xFF9E9894),
+                    fontSize = DIALOG_BODY,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+        }
     }
+}
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF2A2829),
-        titleContentColor = Color.White,
-        title = { ScaledByApp(current) { Text("설정", fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold) } },
-        text = {
-            ScaledByApp(current) {
-                Column {
-                    options.forEachIndexed { index, (label, value) ->
-                        if (index > 0) SettingsRule()
-                        val selected = kotlin.math.abs(current - value) < 0.01f
-                        Row(
+/**
+ * A dialog laid out by hand.
+ *
+ * The framework's own pads its content by a fixed amount and centres its
+ * buttons inside a minimum width, which puts every edge on a different line
+ * from the panel behind it. Here the margins are the top bar's, so a dialog
+ * reads as part of the same screen.
+ */
+@Composable
+private fun PanelDialog(
+    scale: Float,
+    title: String,
+    onDismiss: () -> Unit,
+    buttons: @Composable RowScope.() -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        ScaledByApp(scale) {
+            Surface(color = Color(0xFF2A2829), shape = RoundedCornerShape(20.dp)) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = Layout.statusBarPaddingH,
+                        vertical = Layout.statusBarPaddingH,
+                    ),
+                ) {
+                    Text(title, color = Color.White, fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(Layout.statusBarPaddingH))
+                    content()
+                    Spacer(Modifier.height(Layout.statusBarPaddingH))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        buttons()
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .quietClickable {
-                                    onPick(value)
-                                    onDismiss()
-                                }
-                                .padding(vertical = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                .height(40.dp)
+                                .quietClickable { onDismiss() },
+                            contentAlignment = Alignment.CenterEnd,
                         ) {
-                            // Note(yoochan.kim): the tick leads the label, like
-                            // the deck's song buttons
-                            Text(
-                                if (selected) "✓" else "",
-                                color = Color.White,
-                                fontSize = DIALOG_BODY,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.width(32.dp),
-                            )
-                            Text(
-                                label,
-                                color = if (selected) Color.White else Color(0xFF9E9894),
-                                fontSize = DIALOG_BODY,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            )
+                            Text("닫기", color = Color.White, fontSize = DIALOG_BODY, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
-        },
-        // Note(yoochan.kim): the address sits in the far corner as an icon,
-        // away from the thing someone actually opened this for. Both buttons
-        // drop their own inset so they line up with the title above.
-        confirmButton = {
-            ScaledByApp(current) {
-                // Note(yoochan.kim): plain clickables rather than buttons — a
-                // button centres its label inside a minimum width, which pushes
-                // both of these off the line the title sits on.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Note(yoochan.kim): a press says what it is; only a long
-                    // press opens it. Nobody wanders in here by accident.
-                    val say = rememberToast()
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .quietClickable(
-                                onClick = { say("서버 주소를 수정하려면 꾹 눌러 주세요") },
-                                onLongClick = { showAddress = true },
-                            ),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Router,
-                            contentDescription = "서버 주소",
-                            tint = Color.White,
-                            modifier = Modifier.size(26.dp),
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .height(44.dp)
-                            .quietClickable { onDismiss() },
-                        contentAlignment = Alignment.CenterEnd,
-                    ) {
-                        Text("닫기", color = Color.White, fontSize = DIALOG_BODY, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        },
-    )
+        }
+    }
 }
 
 /** Nothing here but the address: this is not a place to wander into. */
@@ -387,16 +392,46 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
     var address by remember { mutableStateOf(ServerAddress.of(context)) }
     val valid = ServerAddress.normalize(address) != null
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF2A2829),
-        titleContentColor = Color.White,
-        title = { ScaledByApp(scale) { Text("서버 주소", fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold) } },
-        text = {
-            // Note(yoochan.kim): the cursor and its handles take their colour
-            // from here, not from the field's own colours
-            CompositionLocalProvider(LocalTextSelectionColors provides PANEL_SELECTION) {
-            ScaledByApp(scale) {
+    PanelDialog(
+        scale = scale,
+        title = "서버 주소 수정",
+        onDismiss = onDismiss,
+        buttons = {
+            // Note(yoochan.kim): the way back to the address this build shipped
+            // with, for when the typing went wrong
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .quietClickable { address = ServerAddress.fromBuild },
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Text("초기화", color = Color(0xFF9E9894), fontSize = DIALOG_BODY)
+            }
+            Spacer(Modifier.width(28.dp))
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .quietClickable(enabled = valid) {
+                        val previous = ServerAddress.of(context)
+                        ServerAddress.set(context, address)
+                        if (ServerAddress.of(context) != previous) onChanged()
+                        onDismiss()
+                    },
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Text(
+                    "저장",
+                    color = if (valid) Color.White else Color(0xFF6B6664),
+                    fontSize = DIALOG_BODY,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.width(28.dp))
+        },
+    ) {
+        // Note(yoochan.kim): the cursor and its handles take their colour from
+        // here, not from the field's own colours
+        CompositionLocalProvider(LocalTextSelectionColors provides PANEL_SELECTION) {
                 TextField(
                     value = address,
                     onValueChange = { address = it },
@@ -424,59 +459,8 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
-            }
-            }
-        },
-        confirmButton = {
-            ScaledByApp(scale) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Note(yoochan.kim): the way back to the address this build
-                    // shipped with, for when the typing went wrong
-                    Box(
-                        modifier = Modifier
-                            .height(44.dp)
-                            .quietClickable { address = ServerAddress.fromBuild },
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        Text("초기화", color = Color(0xFF9E9894), fontSize = DIALOG_BODY)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .height(44.dp)
-                                .quietClickable { onDismiss() },
-                            contentAlignment = Alignment.CenterEnd,
-                        ) {
-                            Text("취소", color = Color.White, fontSize = DIALOG_BODY)
-                        }
-                        Spacer(Modifier.width(28.dp))
-                        Box(
-                            modifier = Modifier
-                                .height(44.dp)
-                                .quietClickable(enabled = valid) {
-                                    val previous = ServerAddress.of(context)
-                                    ServerAddress.set(context, address)
-                                    if (ServerAddress.of(context) != previous) onChanged()
-                                    onDismiss()
-                                },
-                            contentAlignment = Alignment.CenterEnd,
-                        ) {
-                            Text(
-                                "저장",
-                                color = if (valid) Color.White else Color(0xFF6B6664),
-                                fontSize = DIALOG_BODY,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -720,9 +704,15 @@ private fun ConsoleButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val tap = rememberTap()
     Button(
         modifier = modifier.padding(vertical = Layout.consoleButtonPaddingV),
-        onClick = { if (enabled) onClick() },
+        onClick = {
+            if (enabled) {
+                tap()
+                onClick()
+            }
+        },
         colors = ButtonDefaults.buttonColors(
             // Note(yoochan.kim): red is the desk saying this input is off
             containerColor = if (alert) Color(0xFF3B0404) else Color(0xFF302E2F),
@@ -742,11 +732,16 @@ private fun ConsoleButton(
 // because Korean otherwise breaks mid-word and the proper line-break config
 // only exists on API 33+.
 @Composable
-private fun WrappingLabel(text: String, fontSize: TextUnit) {
+private fun WrappingLabel(
+    text: String,
+    fontSize: TextUnit,
+    align: TextAlign = TextAlign.Center,
+    modifier: Modifier = Modifier,
+) {
     val welded = remember(text) {
         text.split(" ").joinToString(" ") { word -> word.toCharArray().joinToString("⁠") }
     }
-    Text(welded, fontSize = fontSize, textAlign = TextAlign.Center)
+    Text(welded, fontSize = fontSize, textAlign = align, modifier = modifier)
 }
 
 @Composable
@@ -799,46 +794,55 @@ fun ConnectionStatusBar(
             )
         }
 
-        // Note(yoochan.kim): one slot, two tenants — the gear normally, and the
-        // reconnect button whenever the link is not up. 연결중 counts: a retry
-        // that never lands looks the same as a hang, and waiting it out is not
-        // something to force on someone.
+        // Note(yoochan.kim): 연결중 counts as down — a retry that never lands
+        // looks the same as a hang, and waiting it out is not something to
+        // force on someone.
         val linkDown = status is ConnectionStatus.Disconnected ||
             status is ConnectionStatus.Error ||
             status is ConnectionStatus.Connecting
-        if (!linkDown) {
-            // Note(yoochan.kim): pushed right past the button's inset and the
-            // glyph's own bearing (measured on device), so the visible gear
-            // mirrors the status dot's margin
-            IconButton(onClick = onOpenScale, modifier = Modifier.offset(x = 15.dp)) {
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (linkDown) {
+                Button(
+                    onClick = {
+                        if (isButtonEnabled) {
+                            onReconnectClick()
+                            isButtonEnabled = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF302E2F)),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
+                    enabled = isButtonEnabled
+                ) {
+                    Text("다시 연결하기", fontSize = Layout.reconnectText)
+                }
+
+                if (!isButtonEnabled) {
+                    LaunchedEffect(Unit) {
+                        delay(BUTTON_COOLDOWN_MS)
+                        isButtonEnabled = true
+                    }
+                }
+            }
+            // Note(yoochan.kim): the gear never leaves. It is how someone
+            // reaches the panel's own settings, and hiding it while the link is
+            // down would strand a device exactly when it needs attention. A
+            // plain box rather than an icon button, whose 48dp minimum would
+            // hold it away from the button beside it.
+            Spacer(Modifier.width(12.dp))
+            Box(
+                modifier = Modifier
+                    .size(Layout.statusBarHeight)
+                    .quietClickable { onOpenScale() },
+                contentAlignment = Alignment.CenterEnd,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
-                    contentDescription = "화면 배율",
+                    contentDescription = "설정",
                     tint = Color(0xFF9E9894),
+                    modifier = Modifier.size(Layout.statusBarHeight * 0.62f),
                 )
-            }
-        }
-        if (linkDown) {
-            Button(
-                onClick = {
-                    if (isButtonEnabled) {
-                        onReconnectClick()
-                        isButtonEnabled = false
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF302E2F)),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
-                enabled = isButtonEnabled
-            ) {
-                Text("다시 연결하기", fontSize = Layout.reconnectText)
-            }
-
-            if (!isButtonEnabled) {
-                LaunchedEffect(Unit) {
-                    delay(BUTTON_COOLDOWN_MS)
-                    isButtonEnabled = true
-                }
             }
         }
     }
@@ -898,6 +902,7 @@ fun SongSelection(
     onSongChange: (String) -> Unit,
     processing: Boolean,
 ) {
+    val tap = rememberTap()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -906,8 +911,16 @@ fun SongSelection(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         choices.forEach { song ->
+            // The tick means "this is what you are hearing". While a flow plays
+            // its own track that is true of none of them, so none gets one.
+            // Note(yoochan.kim): it keeps a column beside the button rather than
+            // inside it, so the name has the button's whole width either way.
+            val selected = songIsLive && currentSong == song.id
             Button(
-                onClick = { onSongChange(song.id) },
+                onClick = {
+                    tap()
+                    onSongChange(song.id)
+                },
                 modifier = Modifier
                     .fillMaxWidth(0.9f)
                     .padding(vertical = Layout.songButtonPaddingV),
@@ -917,16 +930,38 @@ fun SongSelection(
                     disabledContentColor = Color.DarkGray,
                 ),
                 shape = RoundedCornerShape(10.dp),
+                // Note(yoochan.kim): the framework's 24dp would hold the tick
+                // away from the edge it belongs on
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 enabled = !processing
             ) {
-                // The tick means "this is what you are hearing". While a flow
-                // plays its own track that is true of none of them, so none
-                // gets one.
-                val selected = songIsLive && currentSong == song.id
-                WrappingLabel(
-                    if (selected) "✓ ${song.title}" else song.title,
-                    fontSize = Layout.songButtonText,
-                )
+                // Note(yoochan.kim): a button packs its content into the middle,
+                // so the row claims the whole width itself — otherwise the tick
+                // travels inward with the name instead of sitting at the edge.
+                // The tick is always drawn and merely turns invisible, which
+                // reserves exactly its own width and no more, at any type size.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "✓",
+                        fontSize = Layout.songButtonText,
+                        color = if (selected) Color.White else Color.Transparent,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    // Every name begins at the same place: hard against the left
+                    // of what the tick leaves. Centring the block would move
+                    // that place whenever a name wrapped to another line.
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        WrappingLabel(
+                            song.title,
+                            fontSize = Layout.songButtonText,
+                            align = TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
             }
         }
     }
@@ -940,6 +975,7 @@ fun VolumeAndPlayback(
     processing: Boolean,
     canPlay: Boolean,
 ) {
+    val tap = rememberTap()
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -957,7 +993,10 @@ fun VolumeAndPlayback(
         )
         Spacer(modifier = Modifier.height(Layout.transportGap))
         Button(
-            onClick = onPlaybackToggle,
+            onClick = {
+                tap()
+                onPlaybackToggle()
+            },
             modifier = Modifier.size(Layout.playButtonSize),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF302E2F),

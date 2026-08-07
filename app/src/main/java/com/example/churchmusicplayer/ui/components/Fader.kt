@@ -76,7 +76,7 @@ fun Fader(
                 }
                 .shadow(
                     elevation = 16.dp,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(10.dp * uiScale),
                     clip = false,
                     ambientColor = Color.Black,
                     spotColor = Color.Black
@@ -93,7 +93,9 @@ fun Fader(
                     onDragStarted = { isDragging = true },
                     onDragStopped = { isDragging = false }
                 ),
-            shape = RoundedCornerShape(10.dp),
+            // Note(yoochan.kim): the corner and the grip scale with the thumb —
+            // a fixed radius on a bigger key makes the same shape look sharper
+            shape = RoundedCornerShape(10.dp * uiScale),
             colors = CardDefaults.cardColors(
                 // processing이 true면 회색으로 변경하고 투명도 추가
                 containerColor = if (!processing) Color.White else Color.Gray.copy(alpha = 0.6f)
@@ -106,8 +108,8 @@ fun Fader(
                 Box(
                     Modifier
                         .width(Layout.faderThumbWidth * uiScale / 2)
-                        .height(5.dp)
-                        .background(Color(0xFFB9B4B2), RoundedCornerShape(2.dp))
+                        .height(5.dp * uiScale)
+                        .background(Color(0xFFB9B4B2), RoundedCornerShape(2.dp * uiScale))
                 )
             }
         }

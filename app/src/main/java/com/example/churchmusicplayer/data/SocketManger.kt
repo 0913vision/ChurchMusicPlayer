@@ -22,12 +22,12 @@ private const val GRACE_PERIOD_MS = 3_000L
  * carrying whatever changed, and a refusal when something is not allowed.
  */
 /**
- * @param serverUrl where the media server is. The build supplies a default, but
- *   the address of a machine on a church network is not a fact about this app —
- *   a router swap or a new Pi would otherwise brick every mounted device, since
- *   even the in-app updater is reached over this same address.
+ * @param serverUrl where the media server is, read afresh on every connect —
+ *   the address is a setting on this device, so a corrected one has to take
+ *   effect on the next attempt rather than the next launch.
+ * @param clientName what this device calls itself, for the admin to read.
  */
-class SocketManager(private val serverUrl: String, private val clientName: String) {
+class SocketManager(private val serverUrl: () -> String, private val clientName: String) {
     private lateinit var socket: Socket
     private var isInitialized = false
     private var lastPingTime: Long = 0
@@ -61,7 +61,7 @@ class SocketManager(private val serverUrl: String, private val clientName: Strin
                 timeout = CONNECT_TIMEOUT_MS
             }
 
-            socket = IO.socket(serverUrl, options)
+            socket = IO.socket(serverUrl(), options)
             registerHandlers()
 
             socket.connect()

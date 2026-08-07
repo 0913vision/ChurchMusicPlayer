@@ -34,6 +34,8 @@ data class LayoutSpec(
     val reconnectText: TextUnit,
     val songButtonPaddingV: Dp,
     val songButtonText: TextUnit,
+    /** The tick's own column beside the button, so names never shift */
+    val songTickWidth: Dp,
     val faderTrackWidth: Dp,
     val faderThumbWidth: Dp,
     val faderThumbHeight: Dp,
@@ -67,7 +69,7 @@ data class LayoutSpec(
 
 private val COMPACT = LayoutSpec(
     screenPaddingH = 30.dp,
-    screenPaddingV = 50.dp,
+    screenPaddingV = 22.dp,
     contentMaxWidth = 10_000.dp,
     statusBarHeight = 50.dp,
     statusBarPaddingH = 20.dp,
@@ -76,6 +78,7 @@ private val COMPACT = LayoutSpec(
     reconnectText = 18.sp,
     songButtonPaddingV = 6.dp,
     songButtonText = 18.sp,
+    songTickWidth = 12.dp,
     faderTrackWidth = 15.dp,
     faderThumbWidth = 90.dp,
     faderThumbHeight = 60.dp,
@@ -107,7 +110,7 @@ private val COMPACT = LayoutSpec(
 
 private val MEDIUM = LayoutSpec(
     screenPaddingH = 48.dp,
-    screenPaddingV = 64.dp,
+    screenPaddingV = 32.dp,
     contentMaxWidth = 760.dp,
     statusBarHeight = 70.dp,
     statusBarPaddingH = 28.dp,
@@ -116,6 +119,7 @@ private val MEDIUM = LayoutSpec(
     reconnectText = 26.sp,
     songButtonPaddingV = 10.dp,
     songButtonText = 30.sp,
+    songTickWidth = 16.dp,
     faderTrackWidth = 24.dp,
     faderThumbWidth = 130.dp,
     faderThumbHeight = 88.dp,
@@ -147,7 +151,7 @@ private val MEDIUM = LayoutSpec(
 
 private val EXPANDED = LayoutSpec(
     screenPaddingH = 40.dp,
-    screenPaddingV = 60.dp,
+    screenPaddingV = 30.dp,
     contentMaxWidth = 900.dp,
     statusBarHeight = 68.dp,
     statusBarPaddingH = 28.dp,
@@ -156,6 +160,7 @@ private val EXPANDED = LayoutSpec(
     reconnectText = 24.sp,
     songButtonPaddingV = 12.dp,
     songButtonText = 34.sp,
+    songTickWidth = 18.dp,
     faderTrackWidth = 28.dp,
     faderThumbWidth = 150.dp,
     faderThumbHeight = 100.dp,
@@ -207,6 +212,7 @@ object Layout {
     val reconnectText get() = spec.reconnectText
     val songButtonPaddingV get() = spec.songButtonPaddingV
     val songButtonText get() = spec.songButtonText
+    val songTickWidth get() = spec.songTickWidth
     val faderTrackWidth get() = spec.faderTrackWidth
     val faderThumbWidth get() = spec.faderThumbWidth
     val faderThumbHeight get() = spec.faderThumbHeight

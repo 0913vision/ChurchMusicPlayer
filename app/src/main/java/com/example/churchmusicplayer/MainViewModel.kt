@@ -13,10 +13,10 @@ import org.json.JSONObject
 private const val VOLUME_WRITE_INTERVAL_MS = 80L
 
 @OptIn(FlowPreview::class)
-class MainViewModel(app: Application) : AndroidViewModel(app) {
+class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // Note(yoochan.kim): the address is a setting on this device, not a fact
     // about the app — see ServerAddress
-    private val socketManager = SocketManager(ServerAddress.of(app), DeviceName.of(app))
+    private val socketManager = SocketManager({ ServerAddress.of(app) }, DeviceName.of(app))
 
     val connectionStatus = socketManager.connectionStatus
     val rejection = socketManager.rejection
@@ -59,15 +59,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val songIsLive: StateFlow<Boolean> = flow.mapState { it !is FlowStatus.Playing }
 
     /**
-     * Who to call when something is wrong, as the server names them. Unknown
-     * until the handshake lands — including on the very first connection
-     * failure, which is exactly when it would have been most useful.
+     * Who to call when something is wrong, as the server names them.
+     *
+     * Cached on the device, because it arrives in the handshake and the screen
+     * that needs it most is the one where the handshake never happened.
      */
-    val helpline: StateFlow<Helpline> = ready.mapState { it?.contact ?: Helpline.Unknown }
-
-    /** Whether the server implements the console commands this screen offers. */
-    val consoleAvailable: StateFlow<Boolean> =
-        ready.mapState { it?.supportsCommand(Protocol.Command.ENABLE_CONSOLE_INPUT) == true }
+    val helpline: StateFlow<Helpline> = ready.mapState { info ->
+        val known = info?.contact as? Helpline.Known
+        if (known != null) ContactStore.remember(app, known)
+        known ?: ContactStore.last(app)
+    }
 
     /**
      * The inputs the desk offers, named by the server and in its order — the app
