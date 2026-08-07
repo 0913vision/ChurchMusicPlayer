@@ -4,11 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,11 +58,16 @@ import kotlinx.coroutines.delay
 private const val REJECTION_VISIBLE_MS = 4_000L
 private const val BUTTON_COOLDOWN_MS = 1_000L
 
+// Note(yoochan.kim): dialogs are read at the same arm's length as the panel, so
+// they take a size of their own rather than the framework's default
+private val DIALOG_TITLE = 26.sp
+private val DIALOG_BODY = 21.sp
+
 private const val UI_PREFS = "ui"
 private const val UI_SCALE_KEY = "scale"
 
 private fun loadUiScale(context: Context): Float =
-    context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE).getFloat(UI_SCALE_KEY, 1f).coerceIn(0.9f, 1.2f)
+    context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE).getFloat(UI_SCALE_KEY, 1f).coerceIn(0.9f, 1.3f)
 
 private fun saveUiScale(context: Context, value: Float) {
     context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE).edit().putFloat(UI_SCALE_KEY, value).apply()
@@ -221,6 +230,7 @@ fun MainScreen(
  * for; the server address is not, so it sits one step further in — a line that
  * says only what it is, and a window with nothing in it but the address.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SettingsDialog(
     current: Float,
@@ -228,7 +238,7 @@ private fun SettingsDialog(
     onDismiss: () -> Unit,
     onServerChanged: () -> Unit,
 ) {
-    val options = listOf("작게" to 0.9f, "보통" to 1.0f, "크게" to 1.1f, "아주 크게" to 1.2f)
+    val options = listOf("글자 작게" to 0.9f, "글자 보통" to 1.0f, "글자 크게" to 1.15f, "글자 아주 크게" to 1.3f)
     var showAddress by remember { mutableStateOf(false) }
 
     if (showAddress) {
@@ -244,11 +254,10 @@ private fun SettingsDialog(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF2A2829),
         titleContentColor = Color.White,
-        title = { ScaledByApp(current) { Text("설정", fontWeight = FontWeight.Bold) } },
+        title = { ScaledByApp(current) { Text("설정", fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold) } },
         text = {
             ScaledByApp(current) {
                 Column {
-                    SettingsLabel("화면 배율")
                     options.forEachIndexed { index, (label, value) ->
                         if (index > 0) SettingsRule()
                         val selected = kotlin.math.abs(current - value) < 0.01f
@@ -259,7 +268,7 @@ private fun SettingsDialog(
                                     onPick(value)
                                     onDismiss()
                                 }
-                                .padding(vertical = 14.dp),
+                                .padding(vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             // Note(yoochan.kim): the tick leads the label, like
@@ -267,35 +276,67 @@ private fun SettingsDialog(
                             Text(
                                 if (selected) "✓" else "",
                                 color = Color.White,
-                                fontSize = 17.sp,
+                                fontSize = DIALOG_BODY,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.width(26.dp),
+                                modifier = Modifier.width(32.dp),
                             )
                             Text(
                                 label,
                                 color = if (selected) Color.White else Color(0xFF9E9894),
-                                fontSize = 17.sp,
+                                fontSize = DIALOG_BODY,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                             )
                         }
                     }
-
                 }
             }
         },
-        // Note(yoochan.kim): the address sits in the far corner, away from the
-        // thing someone actually opened this for
+        // Note(yoochan.kim): the address sits in the far corner as an icon,
+        // away from the thing someone actually opened this for. Both buttons
+        // drop their own inset so they line up with the title above.
         confirmButton = {
             ScaledByApp(current) {
+                // Note(yoochan.kim): plain clickables rather than buttons — a
+                // button centres its label inside a minimum width, which pushes
+                // both of these off the line the title sits on.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = { showAddress = true }) {
-                        Text("서버 주소", color = Color(0xFF9E9894))
+                    // Note(yoochan.kim): a press says what it is; only a long
+                    // press opens it. Nobody wanders in here by accident.
+                    val context = LocalContext.current
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .combinedClickable(
+                                onClick = {
+                                    Toast.makeText(
+                                        context,
+                                        "서버 주소를 수정하려면 꾹 눌러 주세요",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                },
+                                onLongClick = { showAddress = true },
+                            ),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Router,
+                            contentDescription = "서버 주소",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
-                    TextButton(onClick = onDismiss) { Text("닫기", color = Color.White) }
+                    Box(
+                        modifier = Modifier
+                            .height(44.dp)
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        Text("닫기", color = Color.White, fontSize = DIALOG_BODY, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         },
@@ -313,7 +354,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF2A2829),
         titleContentColor = Color.White,
-        title = { ScaledByApp(scale) { Text("서버 주소", fontWeight = FontWeight.Bold) } },
+        title = { ScaledByApp(scale) { Text("서버 주소", fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold) } },
         text = {
             ScaledByApp(scale) {
                 TextField(
@@ -321,13 +362,22 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                     onValueChange = { address = it },
                     singleLine = true,
                     isError = !valid,
-                    textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+                    textStyle = LocalTextStyle.current.copy(fontSize = DIALOG_BODY),
+                    // Note(yoochan.kim): every accent spelled out — the theme's
+                    // default is Material purple, which belongs to no other
+                    // pixel on this screen
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color(0xFF262425),
                         unfocusedContainerColor = Color(0xFF262425),
                         errorContainerColor = Color(0xFF262425),
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
+                        errorTextColor = Color.White,
+                        cursorColor = Color.White,
+                        errorCursorColor = Color(0xFFE05B5B),
+                        focusedIndicatorColor = Color.White,
+                        unfocusedIndicatorColor = Color(0xFF6B6664),
+                        errorIndicatorColor = Color(0xFFE05B5B),
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -335,28 +385,54 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
         },
         confirmButton = {
             ScaledByApp(scale) {
-                TextButton(
-                    enabled = valid,
-                    onClick = {
-                        val previous = ServerAddress.of(context)
-                        ServerAddress.set(context, address)
-                        if (ServerAddress.of(context) != previous) onChanged()
-                        onDismiss()
-                    },
-                ) { Text("저장", color = if (valid) Color.White else Color(0xFF6B6664)) }
-            }
-        },
-        dismissButton = {
-            ScaledByApp(scale) {
-                TextButton(onClick = onDismiss) { Text("취소", color = Color.White) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Note(yoochan.kim): the way back to the address this build
+                    // shipped with, for when the typing went wrong
+                    Box(
+                        modifier = Modifier
+                            .height(44.dp)
+                            .clickable { address = ServerAddress.fromBuild },
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text("초기화", color = Color(0xFF9E9894), fontSize = DIALOG_BODY)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .height(44.dp)
+                                .clickable { onDismiss() },
+                            contentAlignment = Alignment.CenterEnd,
+                        ) {
+                            Text("취소", color = Color.White, fontSize = DIALOG_BODY)
+                        }
+                        Spacer(Modifier.width(28.dp))
+                        Box(
+                            modifier = Modifier
+                                .height(44.dp)
+                                .clickable(enabled = valid) {
+                                    val previous = ServerAddress.of(context)
+                                    ServerAddress.set(context, address)
+                                    if (ServerAddress.of(context) != previous) onChanged()
+                                    onDismiss()
+                                },
+                            contentAlignment = Alignment.CenterEnd,
+                        ) {
+                            Text(
+                                "저장",
+                                color = if (valid) Color.White else Color(0xFF6B6664),
+                                fontSize = DIALOG_BODY,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
             }
         },
     )
-}
-
-@Composable
-private fun SettingsLabel(text: String) {
-    Text(text, color = Color(0xFF9E9894), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
 }
 
 @Composable
