@@ -12,8 +12,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +30,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -65,6 +69,45 @@ private val DIALOG_BODY = 21.sp
 
 private const val UI_PREFS = "ui"
 private const val UI_SCALE_KEY = "scale"
+
+/**
+ * A press with no ripple.
+ *
+ * The framework tints its ripple with the theme's accent, which on an
+ * unthemed app is Material purple — a colour nothing else on this panel uses,
+ * drawn in a rectangle that has nothing to do with the glyph inside it.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.quietClickable(
+    enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit,
+): Modifier = composed {
+    combinedClickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        enabled = enabled,
+        onLongClick = onLongClick,
+        onClick = onClick,
+    )
+}
+
+/** Says one thing at a time: a second press replaces the notice, never queues behind it. */
+@Composable
+private fun rememberToast(): (String) -> Unit {
+    val context = LocalContext.current
+    val holder = remember { arrayOfNulls<Toast>(1) }
+    return { message ->
+        holder[0]?.cancel()
+        holder[0] = Toast.makeText(context, message, Toast.LENGTH_SHORT).also { it.show() }
+    }
+}
+
+/** White where the framework would use its accent: cursor, handles, selection. */
+private val PANEL_SELECTION = TextSelectionColors(
+    handleColor = Color.White,
+    backgroundColor = Color.White.copy(alpha = 0.3f),
+)
 
 private fun loadUiScale(context: Context): Float =
     context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE).getFloat(UI_SCALE_KEY, 1f).coerceIn(0.9f, 1.3f)
@@ -264,7 +307,7 @@ private fun SettingsDialog(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
+                                .quietClickable {
                                     onPick(value)
                                     onDismiss()
                                 }
@@ -306,18 +349,12 @@ private fun SettingsDialog(
                 ) {
                     // Note(yoochan.kim): a press says what it is; only a long
                     // press opens it. Nobody wanders in here by accident.
-                    val context = LocalContext.current
+                    val say = rememberToast()
                     Box(
                         modifier = Modifier
                             .size(44.dp)
-                            .combinedClickable(
-                                onClick = {
-                                    Toast.makeText(
-                                        context,
-                                        "서버 주소를 수정하려면 꾹 눌러 주세요",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                },
+                            .quietClickable(
+                                onClick = { say("서버 주소를 수정하려면 꾹 눌러 주세요") },
                                 onLongClick = { showAddress = true },
                             ),
                         contentAlignment = Alignment.CenterStart,
@@ -332,7 +369,7 @@ private fun SettingsDialog(
                     Box(
                         modifier = Modifier
                             .height(44.dp)
-                            .clickable { onDismiss() },
+                            .quietClickable { onDismiss() },
                         contentAlignment = Alignment.CenterEnd,
                     ) {
                         Text("닫기", color = Color.White, fontSize = DIALOG_BODY, fontWeight = FontWeight.Bold)
@@ -356,6 +393,9 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
         titleContentColor = Color.White,
         title = { ScaledByApp(scale) { Text("서버 주소", fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold) } },
         text = {
+            // Note(yoochan.kim): the cursor and its handles take their colour
+            // from here, not from the field's own colours
+            CompositionLocalProvider(LocalTextSelectionColors provides PANEL_SELECTION) {
             ScaledByApp(scale) {
                 TextField(
                     value = address,
@@ -375,12 +415,16 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                         errorTextColor = Color.White,
                         cursorColor = Color.White,
                         errorCursorColor = Color(0xFFE05B5B),
-                        focusedIndicatorColor = Color.White,
-                        unfocusedIndicatorColor = Color(0xFF6B6664),
-                        errorIndicatorColor = Color(0xFFE05B5B),
+                        // Note(yoochan.kim): the filled box already shows where
+                        // the field is; the framework's underline only adds a
+                        // second edge
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        errorIndicatorColor = Color.Transparent,
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
             }
         },
         confirmButton = {
@@ -395,7 +439,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                     Box(
                         modifier = Modifier
                             .height(44.dp)
-                            .clickable { address = ServerAddress.fromBuild },
+                            .quietClickable { address = ServerAddress.fromBuild },
                         contentAlignment = Alignment.CenterStart,
                     ) {
                         Text("초기화", color = Color(0xFF9E9894), fontSize = DIALOG_BODY)
@@ -404,7 +448,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                         Box(
                             modifier = Modifier
                                 .height(44.dp)
-                                .clickable { onDismiss() },
+                                .quietClickable { onDismiss() },
                             contentAlignment = Alignment.CenterEnd,
                         ) {
                             Text("취소", color = Color.White, fontSize = DIALOG_BODY)
@@ -413,7 +457,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                         Box(
                             modifier = Modifier
                                 .height(44.dp)
-                                .clickable(enabled = valid) {
+                                .quietClickable(enabled = valid) {
                                     val previous = ServerAddress.of(context)
                                     ServerAddress.set(context, address)
                                     if (ServerAddress.of(context) != previous) onChanged()
