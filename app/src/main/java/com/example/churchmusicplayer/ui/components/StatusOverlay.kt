@@ -4,7 +4,6 @@ import android.animation.ValueAnimator
 import android.os.Build
 import java.text.SimpleDateFormat
 import java.util.Locale
-import java.util.TimeZone
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -298,8 +297,7 @@ private fun Headline(text: String) {
  *
  * SimpleDateFormat rather than java.time — this app still runs on API 21.
  */
-private val WIRE_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
-    .apply { timeZone = TimeZone.getTimeZone("UTC") }
+private val WIRE_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US)
 private val SHOWN_FORMAT = SimpleDateFormat("HH:mm", Locale.getDefault())
 
 private fun clockOf(instant: String): String =

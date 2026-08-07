@@ -16,7 +16,7 @@ private const val VOLUME_WRITE_INTERVAL_MS = 80L
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     // Note(yoochan.kim): the address is a setting on this device, not a fact
     // about the app — see ServerAddress
-    private val socketManager = SocketManager(ServerAddress.of(app))
+    private val socketManager = SocketManager(ServerAddress.of(app), DeviceName.of(app))
 
     val connectionStatus = socketManager.connectionStatus
     val rejection = socketManager.rejection

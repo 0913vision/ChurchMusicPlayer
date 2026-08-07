@@ -27,7 +27,7 @@ private const val GRACE_PERIOD_MS = 3_000L
  *   a router swap or a new Pi would otherwise brick every mounted device, since
  *   even the in-app updater is reached over this same address.
  */
-class SocketManager(private val serverUrl: String) {
+class SocketManager(private val serverUrl: String, private val clientName: String) {
     private lateinit var socket: Socket
     private var isInitialized = false
     private var lastPingTime: Long = 0
@@ -83,7 +83,7 @@ class SocketManager(private val serverUrl: String) {
             // Identify before anything else: the server refuses writes until a
             // client has said which protocol version it speaks.
             emit(Protocol.C2S.HELLO, JSONObject().apply {
-                put("client", Protocol.CLIENT_NAME)
+                put("client", clientName)
                 put("protocolVersion", Protocol.VERSION)
             })
         }
