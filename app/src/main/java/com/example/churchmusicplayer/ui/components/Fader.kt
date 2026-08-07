@@ -33,9 +33,11 @@ fun Fader(
     var thumbHeight by remember { mutableStateOf(0) }
     var isDragging by remember { mutableStateOf(false) }
     var dragOffset by remember { mutableStateOf(0f) }
-    // Note(yoochan.kim): the fader grows with the app zoom; the drag maths are
-    // safe because they use the measured pixel sizes
-    val uiScale = LocalUiScale.current
+    // Note(yoochan.kim): the fader grows with the app zoom, but at half its
+    // pace — like the volume number, it is already large enough that following
+    // the type step for step makes it loom. The drag maths are safe either way,
+    // since they work from the measured pixel sizes.
+    val uiScale = 1f + (LocalUiScale.current - 1f) / 2f
 
     Box(
         modifier = modifier

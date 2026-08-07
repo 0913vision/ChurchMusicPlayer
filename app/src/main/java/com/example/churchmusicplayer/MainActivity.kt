@@ -66,6 +66,13 @@ import kotlinx.coroutines.delay
 
 private const val REJECTION_VISIBLE_MS = 4_000L
 private const val BUTTON_COOLDOWN_MS = 1_000L
+// Note(yoochan.kim): how long a console press waits for the desk before it
+// gives up and lets the button be pressed again
+private const val CONSOLE_PENDING_MS = 6_000L
+
+// Note(yoochan.kim): the screen's two columns, shared by every row of it
+private const val LEFT_COLUMN = 0.75f
+private const val RIGHT_COLUMN = 1f
 
 // Note(yoochan.kim): dialogs are read at the same arm's length as the panel, so
 // they take a size of their own rather than the framework's default
@@ -553,7 +560,7 @@ fun MainContent(
             // phone and on a tablet.
             Box(
                 modifier = Modifier
-                    .weight(0.75f)
+                    .weight(LEFT_COLUMN)
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -585,7 +592,7 @@ fun MainContent(
         ) {
             Box(
                 modifier = Modifier
-                    .weight(0.75f)
+                    .weight(LEFT_COLUMN)
                     .fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
@@ -629,7 +636,20 @@ fun MainContent(
  */
 @Composable
 fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) {
-    var resting by remember { mutableStateOf(false) }
+    // Note(yoochan.kim): the input this panel just asked for. It stays pending
+    // until the desk answers, rather than for a fixed second — a timer shorter
+    // than the desk's reply flashes the button back to "off" on the way to
+    // "on", which reads as the press having failed.
+    var pending by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(inputs) {
+        if (inputs.any { it.id == pending && it.on }) pending = null
+    }
+    LaunchedEffect(pending) {
+        if (pending != null) {
+            delay(CONSOLE_PENDING_MS)
+            pending = null
+        }
+    }
 
     // Note(yoochan.kim): a silent desk is a fault, not a neutral — and a press
     // would never reach it anyway
@@ -665,33 +685,39 @@ fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) 
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(Layout.consoleButtonPaddingV),
     ) {
+        // Note(yoochan.kim): the screen is two columns — the record over the
+        // fader on the left, the songs over the transport on the right — and
+        // this row is the third floor of the same building, so it takes the
+        // same widths rather than splitting itself evenly.
         inputs.chunked(2).forEach { pair ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(Layout.consoleButtonGap),
             ) {
-                pair.forEach { input ->
+                pair.forEachIndexed { index, input ->
+                    val waiting = pending == input.id
                     ConsoleButton(
-                        label = if (input.on) "${input.label} 켜져 있음" else "${input.label} 켜기",
-                        enabled = !resting && !input.on,
-                        alert = input.known && !input.on,
-                        modifier = Modifier.weight(1f),
+                        // Note(yoochan.kim): the state is one word to the line
+                        // breaker — a name and what it is doing may part, but
+                        // "켜져 있음" must not.
+                        label = if (input.on) "${unbreakable(input.label)} 켜져 있음"
+                                else "${unbreakable(input.label)} 켜기",
+                        // The longest thing this button can ever say, so it is
+                        // that tall from the first frame and never resizes.
+                        widest = "${unbreakable(input.label)} 켜져 있음",
+                        enabled = !waiting && !input.on,
+                        // Note(yoochan.kim): red is the desk saying "off", and
+                        // while a press is in flight the desk has not answered
+                        // yet — so it says nothing.
+                        alert = input.known && !input.on && !waiting,
+                        modifier = Modifier.weight(if (index == 0) LEFT_COLUMN else RIGHT_COLUMN),
                     ) {
                         onEnable(input.id)
-                        resting = true
+                        pending = input.id
                     }
                 }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                if (pair.size == 1) Spacer(Modifier.weight(RIGHT_COLUMN))
             }
-        }
-    }
-
-    // Note(yoochan.kim): the desk's answer takes a poll to arrive, so a short
-    // rest covers the gap before 켜져 있음 lands.
-    if (resting) {
-        LaunchedEffect(Unit) {
-            delay(BUTTON_COOLDOWN_MS)
-            resting = false
         }
     }
 }
@@ -699,6 +725,7 @@ fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) 
 @Composable
 private fun ConsoleButton(
     label: String,
+    widest: String,
     enabled: Boolean,
     alert: Boolean,
     modifier: Modifier = Modifier,
@@ -720,10 +747,17 @@ private fun ConsoleButton(
             disabledContentColor = Color.DarkGray,
         ),
         shape = RoundedCornerShape(10.dp),
-        contentPadding = PaddingValues(vertical = 0.dp, horizontal = 8.dp),
+        contentPadding = PaddingValues(vertical = 6.dp, horizontal = 8.dp),
         enabled = enabled
     ) {
-        WrappingLabel(label, fontSize = Layout.consoleButtonText)
+        // Note(yoochan.kim): the longest wording this button can hold is drawn
+        // invisibly underneath, so the height is the tallest it will ever need
+        // from the first frame, and the words in view sit centred in it however
+        // few lines they take.
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            WrappingLabel(widest, fontSize = Layout.consoleButtonText, transparent = true)
+            WrappingLabel(label, fontSize = Layout.consoleButtonText)
+        }
     }
 }
 
@@ -732,16 +766,30 @@ private fun ConsoleButton(
 // because Korean otherwise breaks mid-word and the proper line-break config
 // only exists on API 33+.
 @Composable
+/** One chunk the line breaker may not open up, however many words are in it. */
+private fun unbreakable(text: String): String = text.replace(' ', ' ')
+
+@Composable
 private fun WrappingLabel(
     text: String,
     fontSize: TextUnit,
     align: TextAlign = TextAlign.Center,
     modifier: Modifier = Modifier,
+    transparent: Boolean = false,
 ) {
     val welded = remember(text) {
         text.split(" ").joinToString(" ") { word -> word.toCharArray().joinToString("⁠") }
     }
-    Text(welded, fontSize = fontSize, textAlign = align, modifier = modifier)
+    Text(
+        welded,
+        fontSize = fontSize,
+        // Note(yoochan.kim): a hair more than the default, so a name and its
+        // state do not sit on top of one another when they take two lines
+        lineHeight = fontSize * 1.15f,
+        textAlign = align,
+        modifier = modifier,
+        color = if (transparent) Color.Transparent else Color.Unspecified,
+    )
 }
 
 @Composable
@@ -903,6 +951,9 @@ fun SongSelection(
     processing: Boolean,
 ) {
     val tap = rememberTap()
+    // Note(yoochan.kim): every button is as tall as the longest name needs, so
+    // the row of them holds still whatever is chosen.
+    val longest = remember(choices) { choices.maxByOrNull { it.title.length }?.title ?: "" }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -954,6 +1005,16 @@ fun SongSelection(
                     // of what the tick leaves. Centring the block would move
                     // that place whenever a name wrapped to another line.
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        // The longest name in the list is drawn invisibly under
+                        // every button, so they are all as tall as the tallest
+                        // from the first frame and none of them resizes later.
+                        WrappingLabel(
+                            longest,
+                            fontSize = Layout.songButtonText,
+                            align = TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth(),
+                            transparent = true,
+                        )
                         WrappingLabel(
                             song.title,
                             fontSize = Layout.songButtonText,
