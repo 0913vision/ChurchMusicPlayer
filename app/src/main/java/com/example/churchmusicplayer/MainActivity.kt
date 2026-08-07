@@ -217,12 +217,9 @@ fun MainScreen(
 }
 
 /**
- * This device's own settings: the screen scale, and where the server is.
- *
- * Both are stored here rather than built in, because both are facts about this
- * tablet in this building. The address especially: if it were fixed at build
- * time, a new router would leave the panel unable to connect and unable to
- * fetch its own update, with nothing anyone at the church could do.
+ * This device's settings. The scale is what someone here would come looking
+ * for; the server address is not, so it sits one step further in — a line that
+ * says only what it is, and a window with nothing in it but the address.
  */
 @Composable
 private fun SettingsDialog(
@@ -231,10 +228,17 @@ private fun SettingsDialog(
     onDismiss: () -> Unit,
     onServerChanged: () -> Unit,
 ) {
-    val context = LocalContext.current
     val options = listOf("작게" to 0.9f, "보통" to 1.0f, "크게" to 1.1f, "아주 크게" to 1.2f)
-    var address by remember { mutableStateOf(ServerAddress.of(context)) }
-    val valid = ServerAddress.normalize(address) != null
+    var showAddress by remember { mutableStateOf(false) }
+
+    if (showAddress) {
+        AddressDialog(
+            scale = current,
+            onDismiss = { showAddress = false },
+            onChanged = onServerChanged,
+        )
+        return
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -276,51 +280,77 @@ private fun SettingsDialog(
                         }
                     }
 
-                    Spacer(Modifier.height(18.dp))
-                    SettingsLabel("서버 주소")
-                    TextField(
-                        value = address,
-                        onValueChange = { address = it },
-                        singleLine = true,
-                        isError = !valid,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFF262425),
-                            unfocusedContainerColor = Color(0xFF262425),
-                            errorContainerColor = Color(0xFF262425),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        if (valid) "바꾸면 새 주소로 다시 연결해요." else "주소를 확인해 주세요.",
-                        color = if (valid) Color(0xFF9E9894) else Color(0xFFE05B5B),
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                    TextButton(onClick = { address = ServerAddress.fromBuild }) {
-                        Text("기본 주소로 되돌리기", color = Color(0xFF9E9894), fontSize = 14.sp)
+                    SettingsRule()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showAddress = true }
+                            .padding(vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Spacer(Modifier.width(26.dp))
+                        Text("서버 주소", color = Color(0xFF9E9894), fontSize = 17.sp)
+                        Spacer(Modifier.weight(1f))
+                        Text("›", color = Color(0xFF6B6664), fontSize = 19.sp)
                     }
                 }
             }
         },
         confirmButton = {
             ScaledByApp(current) {
+                TextButton(onClick = onDismiss) { Text("닫기", color = Color.White) }
+            }
+        },
+    )
+}
+
+/** Nothing here but the address: this is not a place to wander into. */
+@Composable
+private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> Unit) {
+    val context = LocalContext.current
+    var address by remember { mutableStateOf(ServerAddress.of(context)) }
+    val valid = ServerAddress.normalize(address) != null
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF2A2829),
+        titleContentColor = Color.White,
+        title = { ScaledByApp(scale) { Text("서버 주소", fontWeight = FontWeight.Bold) } },
+        text = {
+            ScaledByApp(scale) {
+                TextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    singleLine = true,
+                    isError = !valid,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF262425),
+                        unfocusedContainerColor = Color(0xFF262425),
+                        errorContainerColor = Color(0xFF262425),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            ScaledByApp(scale) {
                 TextButton(
                     enabled = valid,
                     onClick = {
                         val previous = ServerAddress.of(context)
                         ServerAddress.set(context, address)
-                        if (ServerAddress.of(context) != previous) onServerChanged()
+                        if (ServerAddress.of(context) != previous) onChanged()
                         onDismiss()
                     },
                 ) { Text("저장", color = if (valid) Color.White else Color(0xFF6B6664)) }
             }
         },
         dismissButton = {
-            ScaledByApp(current) {
-                TextButton(onClick = onDismiss) { Text("닫기", color = Color(0xFF9E9894)) }
+            ScaledByApp(scale) {
+                TextButton(onClick = onDismiss) { Text("취소", color = Color(0xFF9E9894)) }
             }
         },
     )
