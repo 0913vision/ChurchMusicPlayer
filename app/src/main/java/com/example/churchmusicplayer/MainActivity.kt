@@ -85,6 +85,12 @@ private const val FORCE_HOLD_MS = 3_000L
 private const val LEFT_COLUMN = 0.75f
 private const val RIGHT_COLUMN = 1f
 
+/** Most of its column the song list may take before it starts scrolling */
+private const val SONG_LIST_SHARE = 0.5f
+
+/** The bar that appears beside a song list with more in it than fits */
+private val SCROLL_HINT_WIDTH = 5.dp
+
 /** Between the gear and whatever stands to its left in the status bar */
 private val GEAR_GAP = 10.dp
 
@@ -606,28 +612,37 @@ fun MainContent(
                 }
             }
 
-            Column(modifier = Modifier.weight(RIGHT_COLUMN)) {
-                SongSelection(
-                    currentSong = currentSong,
-                    choices = songChoices,
-                    songIsLive = songIsLive,
-                    onSongChange = onSongChange,
-                    processing = processing,
-                )
+            // Note(yoochan.kim): songs are added by editing the manifest, so
+            // the list has to be able to grow without taking the transport
+            // down with it. Past this share of the column it scrolls instead;
+            // the rest is the volume's and the key's, whatever the server says.
+            BoxWithConstraints(modifier = Modifier.weight(RIGHT_COLUMN)) {
+                val songsMax = maxHeight * SONG_LIST_SHARE
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.heightIn(max = songsMax)) {
+                        SongSelection(
+                            currentSong = currentSong,
+                            choices = songChoices,
+                            songIsLive = songIsLive,
+                            onSongChange = onSongChange,
+                            processing = processing,
+                        )
+                    }
 
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    VolumeAndPlayback(
-                        volume = volume,
-                        isPlaying = isPlaying,
-                        onPlaybackToggle = onPlaybackToggle,
-                        processing = processing,
-                        canPlay = canPlay,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        VolumeAndPlayback(
+                            volume = volume,
+                            isPlaying = isPlaying,
+                            onPlaybackToggle = onPlaybackToggle,
+                            processing = processing,
+                            canPlay = canPlay,
+                        )
+                    }
                 }
             }
         }
@@ -997,76 +1012,96 @@ fun SongSelection(
     processing: Boolean,
 ) {
     val tap = rememberTap()
+    val scroll = rememberScrollState()
     // Note(yoochan.kim): the list is as tall as the songs make it, not as tall
-    // as the space allows — what it leaves is the transport's. It still scrolls,
-    // for the day someone puts more songs in the manifest than the screen holds.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        choices.forEach { song ->
-            // The tick means "this is what you are hearing". While a flow plays
-            // its own track that is true of none of them, so none gets one.
-            // Note(yoochan.kim): it keeps a column beside the button rather than
-            // inside it, so the name has the button's whole width either way.
-            val selected = songIsLive && currentSong == song.id
-            Button(
-                onClick = {
-                    tap()
-                    onSongChange(song.id)
-                },
-                modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .padding(vertical = Layout.songButtonPaddingV),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF302E2F),
-                    disabledContainerColor = Color(0xFF302E2F),
-                    disabledContentColor = Color.DarkGray,
-                ),
-                shape = RoundedCornerShape(10.dp),
-                // Note(yoochan.kim): the framework's 24dp would hold the tick
-                // away from the edge it belongs on
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                enabled = !processing
-            ) {
-                // Note(yoochan.kim): a button packs its content into the middle,
-                // so the row claims the whole width itself — otherwise the tick
-                // travels inward with the name instead of sitting at the edge.
-                // The tick is always drawn and merely turns invisible, which
-                // reserves exactly its own width and no more, at any type size.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+    // as the space allows — what it leaves is the transport's. Past the share
+    // its caller allows, it scrolls instead, and says so.
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(scroll),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            choices.forEach { song ->
+                // The tick means "this is what you are hearing". While a flow plays
+                // its own track that is true of none of them, so none gets one.
+                // Note(yoochan.kim): it keeps a column beside the button rather than
+                // inside it, so the name has the button's whole width either way.
+                val selected = songIsLive && currentSong == song.id
+                Button(
+                    onClick = {
+                        tap()
+                        onSongChange(song.id)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .padding(vertical = Layout.songButtonPaddingV),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF302E2F),
+                        disabledContainerColor = Color(0xFF302E2F),
+                        disabledContentColor = Color.DarkGray,
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    // Note(yoochan.kim): the framework's 24dp would hold the tick
+                    // away from the edge it belongs on
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    enabled = !processing
                 ) {
-                    Text(
-                        "✓",
-                        fontSize = Layout.songButtonText,
-                        color = if (selected) Color.White else Color.Transparent,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    // Every name begins at the same place: hard against the left
-                    // of what the tick leaves. Centring the block would move
-                    // that place whenever a name wrapped to another line.
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        // Note(yoochan.kim): a song button is as tall as its own
-                        // name needs. Only the console pair holds a common
-                        // height, where one saying more than the other would
-                        // read as the two being different kinds of thing.
-                        WrappingLabel(
-                            song.title,
+                    // Note(yoochan.kim): a button packs its content into the middle,
+                    // so the row claims the whole width itself — otherwise the tick
+                    // travels inward with the name instead of sitting at the edge.
+                    // The tick is always drawn and merely turns invisible, which
+                    // reserves exactly its own width and no more, at any type size.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "✓",
                             fontSize = Layout.songButtonText,
-                            align = TextAlign.Start,
-                            modifier = Modifier.fillMaxWidth(),
+                            color = if (selected) Color.White else Color.Transparent,
                         )
+                        Spacer(Modifier.width(8.dp))
+                        // Every name begins at the same place: hard against the left
+                        // of what the tick leaves. Centring the block would move
+                        // that place whenever a name wrapped to another line.
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            // Note(yoochan.kim): a song button is as tall as its own
+                            // name needs. Only the console pair holds a common
+                            // height, where one saying more than the other would
+                            // read as the two being different kinds of thing.
+                            WrappingLabel(
+                                song.title,
+                                fontSize = Layout.songButtonText,
+                                align = TextAlign.Start,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             }
         }
+
+        // Note(yoochan.kim): a cut-off button is a weak hint — someone has to
+        // notice it. This is the ordinary sign for "there is more", and it also
+        // says how much and where. It exists only while there is more.
+        if (scroll.maxValue > 0) {
+            val density = LocalDensity.current
+            val content = maxHeight + with(density) { scroll.maxValue.toDp() }
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(y = maxHeight * (with(density) { scroll.value.toDp() } / content))
+                    .width(SCROLL_HINT_WIDTH)
+                    .height(maxHeight * (maxHeight / content))
+                    .background(Color.White.copy(alpha = 0.3f), RoundedCornerShape(50)),
+            )
+        }
     }
 }
+
 
 @Composable
 fun VolumeAndPlayback(
