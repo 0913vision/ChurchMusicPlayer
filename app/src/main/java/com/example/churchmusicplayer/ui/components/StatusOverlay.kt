@@ -122,7 +122,9 @@ fun disconnectedNotice(onAddress: () -> Unit): OverlayNotice = OverlayNotice(
     headline = "연결이 끊겼어요",
     note = "와이파이가 켜져 있는지 확인해 주세요.\n위쪽 ${BUTTON_SLOT}를 눌러 주세요.",
     noteButton = "다시 연결하기",
-    action = OverlayAction("서버 주소", onAddress),
+    // Note(yoochan.kim): a verb, like the other thing that can appear in this
+    // row — the name alone reads as a label rather than as something to press.
+    action = OverlayAction("서버 주소 바꾸기", onAddress),
 )
 
 /**

@@ -421,7 +421,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
 
     PanelDialog(
         scale = scale,
-        title = "서버 주소 수정",
+        title = "서버 주소 바꾸기",
         onDismiss = onDismiss,
         buttons = {
             // Note(yoochan.kim): the way back to the address this build shipped
