@@ -363,7 +363,10 @@ private fun HelpLine(text: String, weight: FontWeight, modifier: Modifier = Modi
  */
 @Composable
 private fun Headline(text: String) {
-    var size by remember(text) { mutableStateOf(Layout.overlayHeadline) }
+    // Note(yoochan.kim): read outside remember — the size now depends on the
+    // app's zoom, so the shrink-to-fit has to start over when that changes.
+    val full = Layout.overlayHeadline
+    var size by remember(text, full) { mutableStateOf(full) }
     Text(
         weldWords(text),
         color = Color.White,

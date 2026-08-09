@@ -1,5 +1,6 @@
 package com.example.churchmusicplayer.ui
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -208,36 +209,36 @@ object Layout {
     val statusBarHeight get() = spec.statusBarHeight
     val statusBarPaddingH get() = spec.statusBarPaddingH
     val statusDotSize get() = spec.statusDotSize
-    val statusText get() = spec.statusText
-    val reconnectText get() = spec.reconnectText
+    val statusText: TextUnit @Composable get() = spec.statusText * LocalUiScale.current
+    val reconnectText: TextUnit @Composable get() = spec.reconnectText * LocalUiScale.current
     val songButtonPaddingV get() = spec.songButtonPaddingV
-    val songButtonText get() = spec.songButtonText
+    val songButtonText: TextUnit @Composable get() = spec.songButtonText * LocalUiScale.current
     val songTickWidth get() = spec.songTickWidth
     val faderTrackWidth get() = spec.faderTrackWidth
     val faderThumbWidth get() = spec.faderThumbWidth
     val faderThumbHeight get() = spec.faderThumbHeight
     val faderPaddingV get() = spec.faderPaddingV
     val faderMinHeight get() = spec.faderMinHeight
-    val consoleButtonText get() = spec.consoleButtonText
+    val consoleButtonText: TextUnit @Composable get() = spec.consoleButtonText * LocalUiScale.current
     val consoleButtonGap get() = spec.consoleButtonGap
     val consoleButtonPaddingV get() = spec.consoleButtonPaddingV
-    val volumeText get() = spec.volumeText
+    val volumeText: TextUnit @Composable get() = spec.volumeText * LocalUiScale.current
     val transportGap get() = spec.transportGap
     val playButtonSize get() = spec.playButtonSize
     val playIconSize get() = spec.playIconSize
     val overlayEdge get() = spec.overlayEdge
     val overlayBandPaddingV get() = spec.overlayBandPaddingV
     val overlaySlide get() = spec.overlaySlide
-    val overlayHeadline get() = spec.overlayHeadline
-    val overlayHeadlineLineHeight get() = spec.overlayHeadlineLineHeight
+    val overlayHeadline: TextUnit @Composable get() = spec.overlayHeadline * LocalUiScale.current
+    val overlayHeadlineLineHeight: TextUnit @Composable get() = spec.overlayHeadlineLineHeight * LocalUiScale.current
     val overlayNoteGap get() = spec.overlayNoteGap
-    val overlayNote get() = spec.overlayNote
-    val overlayNoteLineHeight get() = spec.overlayNoteLineHeight
+    val overlayNote: TextUnit @Composable get() = spec.overlayNote * LocalUiScale.current
+    val overlayNoteLineHeight: TextUnit @Composable get() = spec.overlayNoteLineHeight * LocalUiScale.current
     val overlayHelpGap get() = spec.overlayHelpGap
-    val overlayHelp get() = spec.overlayHelp
-    val overlayHelpLineHeight get() = spec.overlayHelpLineHeight
+    val overlayHelp: TextUnit @Composable get() = spec.overlayHelp * LocalUiScale.current
+    val overlayHelpLineHeight: TextUnit @Composable get() = spec.overlayHelpLineHeight * LocalUiScale.current
     val overlayHelpIcon get() = spec.overlayHelpIcon
     val overlayHelpIconGap get() = spec.overlayHelpIconGap
     val overlayActionPaddingV get() = spec.overlayActionPaddingV
-    val footerText get() = spec.footerText
+    val footerText: TextUnit @Composable get() = spec.footerText * LocalUiScale.current
 }

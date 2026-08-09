@@ -56,6 +56,9 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.churchmusicplayer.data.ConnectionStatus
 import com.example.churchmusicplayer.data.Rejection
@@ -99,6 +102,11 @@ private val GEAR_GAP = 10.dp
 // they take a size of their own rather than the framework's default
 private val DIALOG_TITLE = 26.sp
 private val DIALOG_BODY = 21.sp
+
+// Note(yoochan.kim): the app's zoom is carried by the sizes themselves now,
+// not by the system font scale, so these two carry it as well.
+private val dialogTitle: TextUnit @Composable get() = DIALOG_TITLE * LocalUiScale.current
+private val dialogBody: TextUnit @Composable get() = DIALOG_BODY * LocalUiScale.current
 
 private const val UI_PREFS = "ui"
 private const val UI_SCALE_KEY = "scale"
@@ -166,16 +174,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             var uiScale by remember { mutableStateOf(loadUiScale(context)) }
-            // Note(yoochan.kim): an equipment panel sizes its own type per
-            // screen — the system font scale is capped so no setting breaks the
-            // layout. The app's own 배율 scales the type only, so spacing and
-            // controls hold still and bigger text costs whitespace, not layout
+            // Note(yoochan.kim): an equipment panel decides its own type size.
+            // The system font scale is switched off outright — whoever set it
+            // was thinking about their messages, not about a panel on a wall,
+            // and the same setting differs on every device. The app's own 배율
+            // is applied by Layout to each size instead of being handed to the
+            // system, because a device is free to ignore a scale above 1 and
+            // one of ours does exactly that.
             val density = LocalDensity.current
             CompositionLocalProvider(
-                LocalDensity provides Density(
-                    density.density,
-                    fontScale = density.fontScale.coerceAtMost(1f) * uiScale,
-                ),
+                LocalDensity provides Density(density.density, fontScale = 1f),
                 LocalUiScale provides uiScale,
             ) {
                 MaterialTheme {
@@ -202,6 +210,18 @@ class MainActivity : ComponentActivity() {
             // would have to find the power button before they find the music.
             // A phone is held and put down, so this is the tablet's alone.
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+            // Note(yoochan.kim): and it takes the whole screen. Pinned, the
+            // system bars have nothing left to offer — the clock and the back
+            // arrow lead nowhere here — so they only leave a grey strip above
+            // the panel. A swipe still brings them back for whoever is setting
+            // the tablet up.
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            WindowInsetsControllerCompat(window, window.decorView).apply {
+                hide(WindowInsetsCompat.Type.systemBars())
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+
             startLockTask()
         }
     }
@@ -353,14 +373,14 @@ private fun SettingsDialog(
                 Text(
                     if (selected) "✓" else "",
                     color = Color.White,
-                    fontSize = DIALOG_BODY,
+                    fontSize = dialogBody,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.width(32.dp),
                 )
                 Text(
                     weldWords(label),
                     color = if (selected) Color.White else Color(0xFF9E9894),
-                    fontSize = DIALOG_BODY,
+                    fontSize = dialogBody,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                 )
             }
@@ -393,7 +413,7 @@ private fun PanelDialog(
                         vertical = Layout.statusBarPaddingH,
                     ),
                 ) {
-                    Text(weldWords(title), color = Color.White, fontSize = DIALOG_TITLE, fontWeight = FontWeight.Bold)
+                    Text(weldWords(title), color = Color.White, fontSize = dialogTitle, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(Layout.statusBarPaddingH))
                     content()
                     Spacer(Modifier.height(Layout.statusBarPaddingH))
@@ -409,7 +429,7 @@ private fun PanelDialog(
                                 .quietClickable { onDismiss() },
                             contentAlignment = Alignment.CenterEnd,
                         ) {
-                            Text("닫기", color = Color.White, fontSize = DIALOG_BODY, fontWeight = FontWeight.Bold)
+                            Text("닫기", color = Color.White, fontSize = dialogBody, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -438,7 +458,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                     .quietClickable { address = ServerAddress.fromBuild },
                 contentAlignment = Alignment.CenterEnd,
             ) {
-                Text("초기화", color = Color(0xFF9E9894), fontSize = DIALOG_BODY)
+                Text("초기화", color = Color(0xFF9E9894), fontSize = dialogBody)
             }
             Spacer(Modifier.width(28.dp))
             Box(
@@ -455,7 +475,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                 Text(
                     "저장",
                     color = if (valid) Color.White else Color(0xFF6B6664),
-                    fontSize = DIALOG_BODY,
+                    fontSize = dialogBody,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -470,7 +490,7 @@ private fun AddressDialog(scale: Float, onDismiss: () -> Unit, onChanged: () -> 
                     onValueChange = { address = it },
                     singleLine = true,
                     isError = !valid,
-                    textStyle = LocalTextStyle.current.copy(fontSize = DIALOG_BODY),
+                    textStyle = LocalTextStyle.current.copy(fontSize = dialogBody),
                     // Note(yoochan.kim): every accent spelled out — the theme's
                     // default is Material purple, which belongs to no other
                     // pixel on this screen
@@ -507,15 +527,13 @@ private fun SettingsRule() {
 }
 
 // Note(yoochan.kim): a dialog is its own window, whose compose root re-installs
-// the system density — so the app's zoom is applied again inside it
+// the system density and the app's zoom along with it — so both are set again
 @Composable
 private fun ScaledByApp(scale: Float, content: @Composable () -> Unit) {
     val density = LocalDensity.current
     CompositionLocalProvider(
-        LocalDensity provides Density(
-            density.density,
-            fontScale = density.fontScale.coerceAtMost(1f) * scale,
-        ),
+        LocalDensity provides Density(density.density, fontScale = 1f),
+        LocalUiScale provides scale,
         content = content,
     )
 }
