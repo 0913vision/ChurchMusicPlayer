@@ -12,7 +12,7 @@ package com.example.churchmusicplayer.data
  * owns, which is exactly what v1 set out to remove.
  */
 object Protocol {
-    const val VERSION = 2
+    const val VERSION = 3
 
     object C2S {
         const val HELLO = "hello"
@@ -42,6 +42,7 @@ object Protocol {
 
     object Command {
         const val ENABLE_CONSOLE_INPUT = "enableConsoleInput"
+        const val INITIALIZE_CONSOLE = "initializeConsole"
     }
 
     object Playback {

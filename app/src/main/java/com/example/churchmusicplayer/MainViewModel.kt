@@ -113,6 +113,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Puts the desk back to the state a service starts from. The server paces it. */
+    fun initializeConsole() = socketManager.invoke(Protocol.Command.INITIALIZE_CONSOLE)
+
     fun dismissRejection() = socketManager.clearRejection()
 
     fun reconnect() = socketManager.reconnect()

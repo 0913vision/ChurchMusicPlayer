@@ -10,7 +10,7 @@ plugins {
 // DEV is the emulator's route to this machine. Testing from a real device
 // means editing this line to the host's address on the LAN — visible in the
 // diff, which is the point.
-val DEV_SERVER_URL = "http://192.168.0.26:4000/"
+val DEV_SERVER_URL = "http://192.168.0.6:4000/"
 
 // The Pi, on the church network. Release builds always point here, so cutting
 // a release never depends on remembering to change an address back.
@@ -26,8 +26,8 @@ android {
         targetSdk = 34
         // Both 1.0 and 1.2.0 went out as versionCode 1 — the name was only ever
         // written in the footer. This is the first release numbered in one place.
-        versionCode = 2
-        versionName = "1.3.0"
+        versionCode = 3
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -75,6 +75,12 @@ android {
     buildTypes {
         debug {
             buildConfigField("String", "SERVER_URL", "\"$DEV_SERVER_URL\"")
+            // Note(yoochan.kim): the release key here too, so a debug build can
+            // be put straight onto a device that is carrying a release. Android
+            // refuses an update whose signature differs, and uninstalling first
+            // would take the panel's own settings — its server address — with
+            // it. Same app, same key; only the address and the optimiser differ.
+            if (signed) signingConfig = signingConfigs.getByName("release")
         }
         release {
             buildConfigField("String", "SERVER_URL", "\"$CHURCH_SERVER_URL\"")

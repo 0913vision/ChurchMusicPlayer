@@ -37,11 +37,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -70,20 +73,25 @@ import com.example.churchmusicplayer.ui.unbreakable
 import com.example.churchmusicplayer.ui.weldWords
 import com.example.churchmusicplayer.ui.components.Fader
 import com.example.churchmusicplayer.ui.components.StatusOverlay
+import com.example.churchmusicplayer.ui.components.consoleHold
 import com.example.churchmusicplayer.ui.components.disconnectedNotice
 import com.example.churchmusicplayer.ui.components.lockedNotice
 import com.example.churchmusicplayer.ui.components.outdatedNotice
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
-private const val REJECTION_VISIBLE_MS = 4_000L
 private const val BUTTON_COOLDOWN_MS = 1_000L
 // Note(yoochan.kim): how long a console press waits for the desk before it
 // gives up and lets the button be pressed again
 private const val CONSOLE_PENDING_MS = 6_000L
-// Note(yoochan.kim): long enough that nobody holds it by mistake — it re-sends
-// a switch-on the desk says it does not need
-private const val FORCE_HOLD_MS = 3_000L
+// Note(yoochan.kim): one hold, one length — for a single button and for both at
+// once. Long enough that nobody arrives here by brushing the screen, short
+// enough to feel like a press rather than a wait. Which of the two happens is
+// decided by how many fingers are down, not by who times out first.
+private const val HOLD_MS = 1_000L
+// Note(yoochan.kim): how late the second finger may be and still count as "at
+// the same time" — two hands never land on the same millisecond.
+private const val TOGETHER_MS = 300L
 
 // Note(yoochan.kim): the screen's two columns, shared by every row of it
 private const val LEFT_COLUMN = 0.75f
@@ -174,6 +182,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             var uiScale by remember { mutableStateOf(loadUiScale(context)) }
+            // Note(yoochan.kim): changing the zoom lays the panel out afresh and
+            // the system bars come back with it — closing the dialog alone does
+            // not, so this follows the zoom rather than the window's focus.
+            if (BuildConfig.KIOSK) {
+                LaunchedEffect(uiScale) { hideSystemBars() }
+            }
             // Note(yoochan.kim): an equipment panel decides its own type size.
             // The system font scale is switched off outright — whoever set it
             // was thinking about their messages, not about a panel on a wall,
@@ -217,12 +231,26 @@ class MainActivity : ComponentActivity() {
             // the panel. A swipe still brings them back for whoever is setting
             // the tablet up.
             WindowCompat.setDecorFitsSystemWindows(window, false)
-            WindowInsetsControllerCompat(window, window.decorView).apply {
-                hide(WindowInsetsCompat.Type.systemBars())
-                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
+            hideSystemBars()
 
             startLockTask()
+        }
+    }
+
+    /**
+     * Note(yoochan.kim): a dialog is its own window, and dismissing it hands the
+     * bars back. So they are hidden again whenever this window has the focus —
+     * which also covers the shade being pulled down and let go.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && BuildConfig.KIOSK) hideSystemBars()
+    }
+
+    private fun hideSystemBars() {
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 }
@@ -298,6 +326,7 @@ fun MainScreen(
                 processing = processing,
                 consoleInputs = consoleInputs,
                 onEnableConsole = { viewModel.enableConsoleInput(it) },
+                onInitializeConsole = { viewModel.initializeConsole() },
             )
             }
 
@@ -328,7 +357,15 @@ fun MainScreen(
         Footer()
     }
 
-    RejectionNotice(rejection = rejection, onDismiss = { viewModel.dismissRejection() })
+    // Note(yoochan.kim): a refusal is a passing message like any other, so it
+    // goes where the others go. Before v1 it was indistinguishable from the app
+    // doing nothing — that is what matters, not which surface says it.
+    val sayRejection = rememberToast()
+    LaunchedEffect(rejection) {
+        val reason = rejection ?: return@LaunchedEffect
+        sayRejection(reason.reason.message)
+        viewModel.dismissRejection()
+    }
 
     if (showScale) {
         SettingsDialog(current = uiScale, onPick = onUiScale, onDismiss = { showScale = false })
@@ -401,6 +438,14 @@ private fun PanelDialog(
     scale: Float,
     title: String,
     onDismiss: () -> Unit,
+    /** What the way out is called. "취소" when there is something to confirm. */
+    dismissLabel: String = "닫기",
+    /**
+     * Whether the way out comes before the other keys. A dialog that asks a
+     * question puts the answer last, where the thumb ends up; one that only
+     * shows something puts its way out there instead.
+     */
+    dismissFirst: Boolean = false,
     buttons: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -422,15 +467,27 @@ private fun PanelDialog(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        buttons()
-                        Box(
-                            modifier = Modifier
-                                .height(40.dp)
-                                .quietClickable { onDismiss() },
-                            contentAlignment = Alignment.CenterEnd,
-                        ) {
-                            Text("닫기", color = Color.White, fontSize = dialogBody, fontWeight = FontWeight.Bold)
+                        val dismiss: @Composable () -> Unit = {
+                            Box(
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .quietClickable { onDismiss() },
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
+                                Text(
+                                    dismissLabel,
+                                    color = Color.White,
+                                    fontSize = dialogBody,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
+                        if (dismissFirst) {
+                            dismiss()
+                            Spacer(Modifier.width(28.dp))
+                        }
+                        buttons()
+                        if (!dismissFirst) dismiss()
                     }
                 }
             }
@@ -538,41 +595,6 @@ private fun ScaledByApp(scale: Float, content: @Composable () -> Unit) {
     )
 }
 
-/**
- * A refused write, explained and then let go.
- *
- * Before v1 a refusal was indistinguishable from the app doing nothing, so the
- * operator had no way to tell "the device is busy" from "this is broken".
- */
-@Composable
-fun RejectionNotice(rejection: Rejection?, onDismiss: () -> Unit) {
-    if (rejection == null) return
-
-    LaunchedEffect(rejection.at) {
-        delay(REJECTION_VISIBLE_MS)
-        onDismiss()
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(bottom = 60.dp),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Surface(
-            color = Color(0xFF34302F),
-            shape = RoundedCornerShape(10.dp),
-        ) {
-            Text(
-                weldWords(rejection.reason.message),
-                color = Color.White,
-                fontSize = Layout.reconnectText,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            )
-        }
-    }
-}
-
 @Composable
 fun MainContent(
     volume: Int,
@@ -587,6 +609,7 @@ fun MainContent(
     processing: Boolean,
     consoleInputs: List<ConsoleInput>,
     onEnableConsole: (String) -> Unit,
+    onInitializeConsole: () -> Unit,
 ) {
     Column(
         modifier = Modifier.padding(
@@ -676,7 +699,11 @@ fun MainContent(
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
         ) {
-            ToggleConsoleButton(inputs = consoleInputs, onEnable = onEnableConsole)
+            ToggleConsoleButton(
+                inputs = consoleInputs,
+                onEnable = onEnableConsole,
+                onInitialize = onInitializeConsole,
+            )
         }
     }
 }
@@ -689,9 +716,77 @@ fun MainContent(
  * input is a server change and never a new build of this app.
  */
 @Composable
-fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) {
+fun ToggleConsoleButton(
+    inputs: List<ConsoleInput>,
+    onEnable: (String) -> Unit,
+    onInitialize: () -> Unit,
+) {
     val tap = rememberTap()
     val say = rememberToast()
+
+    // Note(yoochan.kim): where each button ended up, so the one gesture detector
+    // over the whole row can tell which button a finger is on.
+    // Note(yoochan.kim): measured in the row's own coordinates, because that is
+    // where the gesture reads pointer positions. A button's boundsInParent would
+    // be relative to whichever line of buttons it sits on.
+    val bounds = remember { mutableStateMapOf<String, Rect>() }
+    var surface by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
+    // What a held press means, decided in one place when the hold completes.
+    //
+    //   one finger  — send that input's switch-on again. The button is inert
+    //                 when the desk already says on, so nothing else claims it.
+    //   two fingers — put the whole desk back to the state a service starts
+    //                 from, which no single button can do.
+    //
+    // Note(yoochan.kim): both are the same length on purpose. They do not race,
+    // because there is one clock and one decision: the fingers are counted when
+    // it runs out, not whenever each of them happened to land.
+    var confirming by remember { mutableStateOf(false) }
+    val resolve: (Set<String>) -> Unit = { touched ->
+        tap()
+        if (touched.size >= 2) {
+            // Note(yoochan.kim): this one moves the masters, which is heard in
+            // the room the moment it happens. A held press is deliberate enough
+            // to open the question but not deliberate enough to be the answer.
+            confirming = true
+        } else {
+            val id = touched.first()
+            say("${inputs.firstOrNull { it.id == id }?.label ?: id} 소리를 원래대로 맞췄어요")
+            onEnable(id)
+        }
+    }
+    if (confirming) {
+        PanelDialog(
+            scale = LocalUiScale.current,
+            title = "주의",
+            onDismiss = { confirming = false },
+            dismissLabel = "아니오",
+            dismissFirst = true,
+            buttons = {
+                Box(
+                    modifier = Modifier
+                        .height(40.dp)
+                        .quietClickable {
+                            confirming = false
+                            say("본당 음향을 예배와 동일하게 맞췄어요")
+                            onInitialize()
+                        },
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Text("네", color = Color.White, fontSize = dialogBody, fontWeight = FontWeight.Bold)
+                }
+            },
+        ) {
+            Text(
+                weldWords("본당 음향을 예배와 동일하게 변경합니다. 진행할까요?"),
+                color = Color(0xFF9E9894),
+                fontSize = dialogBody,
+                lineHeight = dialogBody * 1.35f,
+            )
+        }
+    }
+
     // Note(yoochan.kim): the input this panel just asked for. It stays pending
     // until the desk answers, rather than for a fixed second — a timer shorter
     // than the desk's reply flashes the button back to "off" on the way to
@@ -738,7 +833,10 @@ fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) 
     // instead of squeezing the names of the first two. Rows share one gap
     // between them, so wrapping costs the fader as little height as possible.
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { surface = it }
+            .consoleHold(bounds = bounds.toMap(), holdMs = HOLD_MS, graceMs = TOGETHER_MS, onHold = resolve),
         verticalArrangement = Arrangement.spacedBy(Layout.consoleButtonPaddingV),
     ) {
         // Note(yoochan.kim): the screen is two columns — the record over the
@@ -766,15 +864,18 @@ fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) 
                         // while a press is in flight the desk has not answered
                         // yet — so it says nothing.
                         alert = input.known && !input.on && !waiting,
-                        modifier = Modifier.weight(if (index == 0) LEFT_COLUMN else RIGHT_COLUMN),
-                        // Note(yoochan.kim): nothing on screen will change — the
-                        // desk already said on — so the press has to answer for
-                        // itself.
-                        onForce = {
-                            tap()
-                            say("${input.label} 켜기를 다시 보냈어요")
-                            onEnable(input.id)
-                        },
+                        modifier = Modifier
+                            .weight(if (index == 0) LEFT_COLUMN else RIGHT_COLUMN)
+                            // Only a button the desk says is already on takes
+                            // part: a press on it means nothing else.
+                            .onGloballyPositioned { placed ->
+                                val root = surface
+                                if (input.on && root != null) {
+                                    bounds[input.id] = root.localBoundingBoxOf(placed)
+                                } else {
+                                    bounds.remove(input.id)
+                                }
+                            },
                     ) {
                         onEnable(input.id)
                         pending = input.id
@@ -786,14 +887,6 @@ fun ToggleConsoleButton(inputs: List<ConsoleInput>, onEnable: (String) -> Unit) 
     }
 }
 
-/**
- * @param onForce sending the desk the switch-on again although it already
- *   reports the input as on. Held for [FORCE_HOLD_MS] rather than tapped: the
- *   button is disabled in that state on purpose, and a press that long is
- *   nobody's accident. What it is for is a desk whose answer and whose sound
- *   disagree — someone moved a fader by hand, and the panel can put its own
- *   levels back without anyone walking to the booth.
- */
 @Composable
 private fun ConsoleButton(
     label: String,
@@ -801,30 +894,11 @@ private fun ConsoleButton(
     enabled: Boolean,
     alert: Boolean,
     modifier: Modifier = Modifier,
-    onForce: () -> Unit,
     onClick: () -> Unit,
 ) {
     val tap = rememberTap()
     Button(
-        modifier = modifier
-            .padding(vertical = Layout.consoleButtonPaddingV)
-            // Note(yoochan.kim): a disabled button still swallows the press —
-            // it just does nothing with it — so this watches the Initial pass,
-            // which every node sees before its children get a say. Nothing is
-            // consumed here: the hold only observes.
-            .pointerInput(enabled) {
-                if (enabled) return@pointerInput
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    val letGo = withTimeoutOrNull(FORCE_HOLD_MS) {
-                        waitForUpOrCancellation(PointerEventPass.Initial)
-                    }
-                    if (letGo == null) {
-                        onForce()
-                        waitForUpOrCancellation(PointerEventPass.Initial)
-                    }
-                }
-            },
+        modifier = modifier.padding(vertical = Layout.consoleButtonPaddingV),
         onClick = {
             if (enabled) {
                 tap()
