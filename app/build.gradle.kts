@@ -10,7 +10,7 @@ plugins {
 // DEV is the emulator's route to this machine. Testing from a real device
 // means editing this line to the host's address on the LAN — visible in the
 // diff, which is the point.
-val DEV_SERVER_URL = "http://10.0.2.2:4000/"
+val DEV_SERVER_URL = "http://192.168.0.26:4000/"
 
 // The Pi, on the church network. Release builds always point here, so cutting
 // a release never depends on remembering to change an address back.
@@ -51,12 +51,37 @@ android {
         }
     }
 
+    // The release key. Its details live in ~/.gradle/gradle.properties, outside
+    // this repository, because a keystore password in a checkout is a password
+    // in every clone and every backup of it.
+    //
+    // Every release from here on must be signed with this one key: Android
+    // refuses to install an update whose signature differs, and the only way
+    // back from a lost keystore is uninstalling the app on every device.
+    val releaseStore = (project.findProperty("LOVELIGHT_STORE_FILE") as String?)?.let(::File)
+    val signed = releaseStore?.exists() == true
+
+    signingConfigs {
+        if (signed) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = project.property("LOVELIGHT_STORE_PASSWORD") as String
+                keyAlias = project.property("LOVELIGHT_KEY_ALIAS") as String
+                keyPassword = project.property("LOVELIGHT_KEY_PASSWORD") as String
+            }
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField("String", "SERVER_URL", "\"$DEV_SERVER_URL\"")
         }
         release {
             buildConfigField("String", "SERVER_URL", "\"$CHURCH_SERVER_URL\"")
+            // Note(yoochan.kim): unsigned rather than debug-signed when the key
+            // is absent — an APK that installs but carries the wrong signature
+            // is worse than one that will not install at all.
+            signingConfig = if (signed) signingConfigs.getByName("release") else null
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

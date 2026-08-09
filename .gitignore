@@ -21,3 +21,8 @@ build/
 *.apk
 *.aab
 *.dm
+
+# The release key. Losing it means every device must uninstall before it can
+# update again, so it is kept outside the repository and backed up by hand.
+*.jks
+*.keystore

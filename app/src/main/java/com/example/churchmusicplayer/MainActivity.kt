@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -196,6 +197,11 @@ class MainActivity : ComponentActivity() {
         // Kiosk is the tablet build's job: it is mounted in one place and must
         // not be navigated away from. The phone build is an ordinary app.
         if (BuildConfig.KIOSK) {
+            // Note(yoochan.kim): and it must not go dark either. A panel on the
+            // wall showing nothing reads as broken, and someone in a service
+            // would have to find the power button before they find the music.
+            // A phone is held and put down, so this is the tablet's alone.
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             startLockTask()
         }
     }

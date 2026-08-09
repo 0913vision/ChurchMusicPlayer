@@ -3,6 +3,8 @@ package com.example.churchmusicplayer.data
 import com.example.churchmusicplayer.BuildConfig
 import io.socket.client.IO
 import io.socket.client.Socket
+import io.socket.engineio.client.transports.Polling
+import io.socket.engineio.client.transports.WebSocket
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,14 +59,28 @@ class SocketManager(private val serverUrl: () -> String, private val clientName:
 
             // The standalone server uses the default Socket.IO path; the old
             // Next.js one served it under /api/socket.
+            //
+            // Note(yoochan.kim): forceNew because IO.socket() otherwise hands
+            // back a cached socket for an address already seen. Pressing 다시
+            // 연결하기 would then add a second set of handlers to a socket that
+            // is already in whatever state it got stuck in, rather than
+            // starting the connection over.
             val options = IO.Options().apply {
                 timeout = CONNECT_TIMEOUT_MS
+                forceNew = true
+                // Note(yoochan.kim): websocket first. Socket.IO otherwise opens
+                // on HTTP long-polling and upgrades, and the tablet's upgrade
+                // never lands — it stays on polling and every press takes a
+                // visible moment. Polling is kept behind it, so a device that
+                // cannot hold a websocket still connects.
+                transports = arrayOf(WebSocket.NAME, Polling.NAME)
             }
 
-            socket = IO.socket(serverUrl(), options)
-            registerHandlers()
+            val fresh = IO.socket(serverUrl(), options)
+            socket = fresh
+            registerHandlers(fresh)
 
-            socket.connect()
+            fresh.connect()
             startPingCheck()
             isInitialized = true
         } catch (e: Exception) {
@@ -72,12 +88,25 @@ class SocketManager(private val serverUrl: () -> String, private val clientName:
         }
     }
 
-    private fun registerHandlers() {
-        socket.on(Protocol.S2C.PING) {
+    /**
+     * Handlers belong to one connection.
+     *
+     * Note(yoochan.kim): each checks that it is still the current socket before
+     * doing anything. A socket for an address that has since been corrected
+     * goes on failing in the background, and its errors used to be reported as
+     * if they were the new connection's — the panel would say 연결중 and then
+     * fall back to 연결 끊김 while the new socket was in fact fine.
+     */
+    private fun registerHandlers(target: Socket) {
+        fun stale(): Boolean = !::socket.isInitialized || socket !== target
+
+        target.on(Protocol.S2C.PING) {
+            if (stale()) return@on
             lastPingTime = System.currentTimeMillis()
         }
 
-        socket.on(Socket.EVENT_CONNECT) {
+        target.on(Socket.EVENT_CONNECT) {
+            if (stale()) return@on
             lastPingTime = System.currentTimeMillis()
             gracePeriodJob?.cancel()
             // Identify before anything else: the server refuses writes until a
@@ -88,7 +117,8 @@ class SocketManager(private val serverUrl: () -> String, private val clientName:
             })
         }
 
-        socket.on(Protocol.S2C.READY) { args ->
+        target.on(Protocol.S2C.READY) { args ->
+            if (stale()) return@on
             val payload = args.firstOrNull() as? JSONObject ?: return@on
             _ready.value = ServerInfo.from(payload)
             _connectionStatus.value =
@@ -96,7 +126,8 @@ class SocketManager(private val serverUrl: () -> String, private val clientName:
                 else ConnectionStatus.Outdated
         }
 
-        socket.on(Protocol.S2C.STATE) { args ->
+        target.on(Protocol.S2C.STATE) { args ->
+            if (stale()) return@on
             val patch = args.firstOrNull() as? JSONObject ?: return@on
             // A patch carries only what changed, so it is merged rather than
             // swapped in — dropping the rest would blank fields nobody touched.
@@ -105,17 +136,18 @@ class SocketManager(private val serverUrl: () -> String, private val clientName:
             _state.value = merged
         }
 
-        socket.on(Protocol.S2C.REJECTED) { args ->
+        target.on(Protocol.S2C.REJECTED) { args ->
+            if (stale()) return@on
             val payload = args.firstOrNull() as? JSONObject ?: return@on
-            val target = payload.optString("target")
+            val target2 = payload.optString("target")
             val reason = RejectReason.of(payload.optString("reason"))
             // Note(yoochan.kim): a locked fader is inert, not a conversation
-            if (target == Protocol.Attribute.VOLUME && reason == RejectReason.DEVICE_BUSY) return@on
-            _rejection.value = Rejection(target = target, reason = reason, at = System.currentTimeMillis())
+            if (target2 == Protocol.Attribute.VOLUME && reason == RejectReason.DEVICE_BUSY) return@on
+            _rejection.value = Rejection(target = target2, reason = reason, at = System.currentTimeMillis())
         }
 
-        socket.on(Socket.EVENT_CONNECT_ERROR) { handleDisconnection() }
-        socket.on(Socket.EVENT_DISCONNECT) { handleDisconnection() }
+        target.on(Socket.EVENT_CONNECT_ERROR) { if (!stale()) handleDisconnection() }
+        target.on(Socket.EVENT_DISCONNECT) { if (!stale()) handleDisconnection() }
     }
 
     /** Sets one attribute. A refusal comes back separately, as a rejection. */
@@ -145,6 +177,9 @@ class SocketManager(private val serverUrl: () -> String, private val clientName:
     }
 
     private fun startPingCheck() {
+        // Note(yoochan.kim): one watchdog at a time. Every reconnect used to
+        // start another and leave the last one running.
+        pingCheckJob?.cancel()
         pingCheckJob = coroutineScope.launch {
             while (isActive) {
                 delay(PING_CHECK_INTERVAL_MS)
@@ -181,8 +216,24 @@ class SocketManager(private val serverUrl: () -> String, private val clientName:
         }
     }
 
+    /**
+     * Ends the current connection and everything listening to it.
+     *
+     * `off()` before `disconnect()` on purpose: a socket that is merely
+     * disconnected keeps its handlers and goes on retrying in the background,
+     * and its failures would be read as the next connection's.
+     */
+    private fun teardown() {
+        if (::socket.isInitialized) {
+            socket.off()
+            socket.disconnect()
+        }
+        pingCheckJob?.cancel()
+        gracePeriodJob?.cancel()
+    }
+
     fun reconnect() {
-        if (::socket.isInitialized) socket.disconnect()
+        teardown()
         // The handshake and every attribute arrive again, so nothing is kept
         // from a connection that is gone.
         _ready.value = null
@@ -192,9 +243,8 @@ class SocketManager(private val serverUrl: () -> String, private val clientName:
     }
 
     fun disconnect() {
-        if (::socket.isInitialized) socket.disconnect()
+        teardown()
         coroutineScope.cancel()
-        pingCheckJob?.cancel()
         isInitialized = false
     }
 }
